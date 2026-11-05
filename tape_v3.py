@@ -128,8 +128,7 @@ def load_tape(sym, day):
         t //= 1000
     m = df.m.astype(str).str.lower().eq("true").to_numpy()
     p, q, b = df.p.to_numpy(np.float64), df.q.to_numpy(np.float64), ~m
-    path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(path, t=t, p=p, q=q, b=b)
+    # на диск не сохраняем: ~8 тыс. монето-дней ленты не поместятся в квоту
     return t, p, q, b
 
 
@@ -212,9 +211,69 @@ def sim_one(c, tape, p: P3, mode):
             "pnl_pct": pnl * 100, "gross_pct": gross * 100, "R": pnl / risk, "reason": reason}
 
 
+def sim_pre(c, tape, p: P3):
+    """Режим PRE — правила из видео «9 шагов пробоя»: стоп-ордер за 1–2 тика ДО уровня
+    (уровень × (1 − 0,02%)), стоп 0,2% от входа, 50% фиксируем на +1%, 50% на +2,5% (лимитки),
+    «нет импульса» — за 30 с не прошли +0,3% → выход по рынку; максимум 15 мин."""
+    t, pr, q, b = tape
+    d = 1 if c.side == "long" else -1
+    L = c.level
+    t0 = int(c.bar.value // 10**6)
+    i0, i1 = np.searchsorted(t, [t0, t0 + 5 * 60_000])
+    if i1 <= i0:
+        return None
+    trig = L * (1 - d * 0.0002)
+    hit = np.flatnonzero(d * (pr[i0:i1] - trig) >= 0)
+    if len(hit) == 0:
+        return None
+    ie = i0 + hit[0]
+    entry = max(d * pr[ie], d * trig) * d * (1 + d * p.slippage)
+    stop = entry * (1 - d * 0.002)
+    tp1, tp2 = entry * (1 + d * 0.01), entry * (1 + d * 0.025)
+    te = t[ie]
+    k_end = min(np.searchsorted(t, te + p.max_hold_s * 1000), len(t))
+    k_noimp = np.searchsorted(t, te + 30_000)
+    size, pnl, best, reason, kx = 1.0, 0.0, 0.0, "time", None
+    for k in range(ie + 1, k_end):
+        if d * (pr[k] - stop) <= 0:
+            pnl += size * (d * (pr[k] * (1 - d * p.slippage) / entry - 1)); size = 0
+            reason, kx = ("stop" if reason != "tp1" else "tp1+stop"), k; break
+        if size == 1.0 and d * (pr[k] - tp1) > 0:
+            pnl += 0.5 * 0.01; size = 0.5; reason = "tp1"
+        if size == 0.5 and d * (pr[k] - tp2) > 0:
+            pnl += 0.5 * 0.025; size = 0; reason, kx = "tp2", k; break
+        best = max(best, d * (pr[k] / entry - 1))
+        if size == 1.0 and k >= k_noimp and best < 0.003:
+            pnl += d * (pr[k] * (1 - d * p.slippage) / entry - 1); size = 0
+            reason, kx = "no_impulse", k; break
+    if size > 0:
+        kx = k_end - 1
+        pnl += size * (d * (pr[kx] * (1 - d * p.slippage) / entry - 1))
+    gross = pnl + 2 * p.slippage * 0.5          # грубо: без проскальзывания по рыночным частям
+    pnl -= 2 * p.fee
+    return {"symbol": c.symbol, "side": c.side, "mode": "PRE", "bar": c.bar,
+            "cross_ms": int(te), "entry_ms": int(te), "exit_ms": int(t[kx]), "delay_s": 0.0,
+            "hold_s": (t[kx] - te) / 1000, "level": L, "entry": entry, "exit": np.nan,
+            "atr_pct": c.atr * 100, "risk_pct": 0.2, "pnl_pct": pnl * 100, "gross_pct": gross * 100,
+            "R": pnl / 0.002, "reason": reason}
+
+
+def add_liquidity(c):
+    """Оборот и число сделок за 24 ч до свечи (из часовок) — для фильтров из видео (≥100 млн $, ≥2 млн сделок)."""
+    h = pd.read_csv("data_cache/hourly_all_20260508_20261105.csv.gz", parse_dates=["t"]).sort_values(["symbol", "t"])
+    h["qv24"] = h.groupby("symbol").qv.transform(lambda v: v.rolling(24, min_periods=1).sum())
+    h["n24"] = h.groupby("symbol").n.transform(lambda v: v.rolling(24, min_periods=1).sum())
+    h["t_av"] = h.t + pd.Timedelta(hours=1)
+    c = c.sort_values("bar")
+    out = pd.merge_asof(c, h[["symbol", "t_av", "qv24", "n24"]].sort_values("t_av"),
+                        left_on="bar", right_on="t_av", by="symbol", direction="backward")
+    return out.drop(columns="t_av")
+
+
 def simulate(workers=8):
     c = pd.read_csv(OUT / "candidates.csv", parse_dates=["bar"])
     c = c[c.bar < HOLDOUT]
+    c = add_liquidity(c)
     c["day"] = c.bar.dt.normalize()
     groups = list(c.groupby(["symbol", "day"]))
     p = P3()
@@ -226,12 +285,14 @@ def simulate(workers=8):
         if tape is None:
             return []
         out = []
-        busy = {"CROSS": {"long": 0, "short": 0}, "TAPE": {"long": 0, "short": 0}}
+        busy = {m: {"long": 0, "short": 0} for m in ("CROSS", "TAPE", "PRE")}
         for r in g.sort_values("bar").itertuples():
-            for mode in ("CROSS", "TAPE"):
+            for mode in ("CROSS", "TAPE", "PRE"):
                 if int(r.bar.value // 10**6) < busy[mode][r.side]:
                     continue
-                res = sim_one(r, tape, p, mode)
+                res = sim_pre(r, tape, p) if mode == "PRE" else sim_one(r, tape, p, mode)
+                if res:
+                    res["qv24"], res["n24"] = r.qv24, r.n24
                 if res:
                     out.append(res)
                     busy[mode][r.side] = res["exit_ms"]
