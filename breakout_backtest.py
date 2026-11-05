@@ -55,6 +55,9 @@ EXCLUDE = {"BTCUSDT", "ETHUSDT", "USDCUSDT", "FDUSDUSDT", "BTCDOMUSDT", "BTCSTUS
 
 @dataclass
 class Params:
+    # размер бара входных данных в минутах: 1 (минутки) или 5 (пятиминутки).
+    # Окна vol_window, retest_window, max_hold_min задаются в БАРАХ.
+    bar_min: int = 1
     # отбор монет
     top_n: int = 15
     days: int = 90
@@ -74,7 +77,9 @@ class Params:
     vol_mult: float = 2.0
     vol_window: int = 30
     # вход: "market" — по открытию следующей минуты после сигнала;
-    #       "retest" — лимитка на уровень + retest_buf, ждём отката не дольше retest_window минут
+    #       "retest" — лимитка на уровень + retest_buf, ждём отката не дольше retest_window минут;
+    #       "stop"   — стоп-ордер на покупку на уровне × (1 + break_buf), вход в момент касания,
+    #                  без ожидания закрытия минутки (поэтому без фильтра объёма)
     entry_mode: str = "market"
     retest_buf: float = 0.001
     retest_window: int = 30
@@ -89,6 +94,7 @@ class Params:
     tp_min: float = 0.02
     tp_max: float = 0.10
     partial_tp: float = 0.025
+    fade_tf: int = 1                 # «пробой закончился»: закрытие под уровнем свечи этого ТФ (1 или 5 мин)
     max_hold_min: int = 24 * 60
     # издержки и риск
     fee: float = 0.0005
@@ -272,8 +278,11 @@ def compute_levels(m5: pd.DataFrame, p: Params) -> pd.DataFrame:
 
 def prepare(df: pd.DataFrame, p: Params) -> pd.DataFrame:
     df = df.copy()
-    m5 = df.resample("5min", label="left", closed="left").agg(
-        {"o": "first", "h": "max", "l": "min", "c": "last", "v": "sum"}).dropna()
+    if p.bar_min == 5:
+        m5 = df[["o", "h", "l", "c", "v"]]
+    else:
+        m5 = df.resample("5min", label="left", closed="left").agg(
+            {"o": "first", "h": "max", "l": "min", "c": "last", "v": "sum"}).dropna()
     lv = compute_levels(m5, p)
     lv = lv.reindex(df.index, method="ffill")
     df["level"] = lv["level"]
@@ -294,6 +303,9 @@ def prepare(df: pd.DataFrame, p: Params) -> pd.DataFrame:
     lvl = df["level"]
     df["signal"] = ((df["c"] > lvl * (1 + p.break_buf)) & (df["c"].shift(1) <= lvl)
                     & (df["v"] > p.vol_mult * vol_avg) & lvl.notna())
+    # для стоп-ордера: прошлая минута закрылась не выше уровня, в этой цена дошла до триггера
+    df["signal_stop"] = (lvl.notna() & (df["c"].shift(1) <= lvl)
+                         & (df["h"] >= lvl * (1 + p.break_buf)))
     return df
 
 
@@ -303,11 +315,14 @@ def simulate(df: pd.DataFrame, symbol: str, variant: str, use_in_play: bool, p: 
     o, h, l, c = (df[x].to_numpy() for x in ("o", "h", "l", "c"))
     lvl_arr, atr = df["level"].to_numpy(), df["atr_pct"].to_numpy()
     touches = df["touches"].to_numpy()
-    sig = df["signal"].to_numpy()
+    sig = df["signal_stop" if p.entry_mode == "stop" else "signal"].to_numpy()
     if use_in_play:
         sig = sig & df["in_play"].to_numpy()
     idx = df.index
     n = len(df)
+    # минута, на которой закрывается свеча fade_tf (для 5m: :04, :09, ...)
+    mins = (idx.hour * 60 + idx.minute).to_numpy()
+    tf_close = (mins + p.bar_min) % p.fade_tf == 0
     trades, busy_until = [], -1
     slip, fee = p.slippage, p.fee
 
@@ -332,6 +347,13 @@ def simulate(df: pd.DataFrame, symbol: str, variant: str, use_in_play: bool, p: 
             # размер позиции задаётся при выставлении лимитки, поэтому риск считаем от лимита
             risk = (lim - stop) / lim
             risk_px = lim - stop
+        elif p.entry_mode == "stop":
+            # исполнение в той же минуте; если открылись выше триггера — по открытию.
+            # Если в этой минуте и low ниже стопа — считаем, что выбило (худший случай).
+            e = s
+            entry = max(o[e], level * (1 + p.break_buf)) * (1 + slip)
+            risk = (entry - stop) / entry
+            risk_px = entry - stop
         else:
             e = s + 1
             entry = o[e] * (1 + slip)
@@ -369,7 +391,7 @@ def simulate(df: pd.DataFrame, symbol: str, variant: str, use_in_play: bool, p: 
                 be_on = True
                 stop = max(stop, entry)
             # 4) пробой закончился: закрытие обратно под уровнем (B, C)
-            if variant in ("B", "C") and c[j] < level:
+            if variant in ("B", "C") and tf_close[j] and c[j] < level:
                 exits.append((size, c[j] * (1 - slip)))
                 reason, size = "fade", 0
                 break
@@ -387,11 +409,65 @@ def simulate(df: pd.DataFrame, symbol: str, variant: str, use_in_play: bool, p: 
         exit_px = sum(sz * px for sz, px in exits)
         trades.append({
             "symbol": symbol, "variant": variant, "in_play_filter": use_in_play,
-            "entry_mode": p.entry_mode, "stop_buf": p.stop_buf,
+            "entry_mode": p.entry_mode, "stop_buf": p.stop_buf, "fade_tf": p.fade_tf,
             "signal_time": idx[s], "entry_time": idx[e], "exit_time": idx[j], "level": level,
             "touches": int(touches[s]), "entry": entry, "exit_avg": exit_px,
             "risk_pct": risk * 100, "pnl_pct": pnl * 100, "R": pnl * entry / risk_px,
-            "reason": reason, "hold_min": j - e + 1,
+            "reason": reason, "hold_min": (j - e + 1) * p.bar_min,
+        })
+        busy_until = j
+    return trades
+
+
+def simulate_fail_short(df: pd.DataFrame, symbol: str, use_in_play: bool, p: Params,
+                        fail_window: int = 15, fail_buf: float = 0.001, stop_pad: float = 0.001,
+                        tp_R: float = 2.0, max_hold: int = 240):
+    """Вариант F, гипотеза «ложный пробой»: после сигнала пробоя минутка в течение
+    fail_window минут закрылась ниже уровня на fail_buf -> шорт по открытию следующей,
+    стоп над максимумом пробоя (+stop_pad), тейк tp_R × риск, выход по времени."""
+    o, h, l, c = (df[x].to_numpy() for x in ("o", "h", "l", "c"))
+    lvl_arr = df["level"].to_numpy()
+    sig = df["signal"].to_numpy()
+    if use_in_play:
+        sig = sig & df["in_play"].to_numpy()
+    idx, n = df.index, len(df)
+    trades, busy_until = [], -1
+    slip, fee = p.slippage, p.fee
+    for s in np.flatnonzero(sig):
+        if s <= busy_until:
+            continue
+        level, hi, f = lvl_arr[s], h[s], None
+        for j in range(s + 1, min(s + 1 + fail_window, n - 1)):
+            hi = max(hi, h[j])
+            if c[j] < level * (1 - fail_buf):
+                f = j
+                break
+        if f is None:
+            continue
+        e = f + 1
+        entry = o[e] * (1 - slip)
+        stop = hi * (1 + stop_pad)
+        risk = (stop - entry) / entry
+        if not (p.min_stop <= risk <= p.max_stop):
+            continue
+        tp = entry * (1 - tp_R * risk)
+        reason, j_end = "time", min(e + max_hold, n - 1)
+        for j in range(e, j_end + 1):
+            if h[j] >= stop:
+                px, reason = max(o[j], stop) * (1 + slip), "stop"
+                break
+            if l[j] <= tp:
+                px, reason = min(tp, o[j]), "tp"
+                break
+        else:
+            px = c[j] * (1 + slip)
+        pnl = (1 - px / entry) - 2 * fee
+        trades.append({
+            "symbol": symbol, "variant": "F", "in_play_filter": use_in_play,
+            "entry_mode": "market", "stop_buf": np.nan, "fade_tf": np.nan,
+            "signal_time": idx[s], "entry_time": idx[e], "exit_time": idx[j], "level": level,
+            "touches": 0, "entry": entry, "exit_avg": px, "risk_pct": risk * 100,
+            "pnl_pct": pnl * 100, "R": pnl / risk, "reason": reason, "hold_min": j - e + 1,
         })
         busy_until = j
     return trades
@@ -425,10 +501,12 @@ def main():
     ap.add_argument("--top", type=int, default=15)
     ap.add_argument("--days", type=int, default=90)
     ap.add_argument("--out", default="results")
-    ap.add_argument("--entry", choices=["market", "retest"], default="market",
+    ap.add_argument("--entry", choices=["market", "retest", "stop"], default="market",
                     help="market: вход по рынку после сигнала; retest: лимитка на откат к уровню")
     ap.add_argument("--stop-buf", type=float, default=0.003,
                     help="стоп ниже уровня на эту долю (0.003 = 0,3%%)")
+    ap.add_argument("--fade-tf", type=int, default=1, choices=[1, 5, 15],
+                    help="выход «под уровнем» по закрытию свечи этого ТФ, мин")
     ap.add_argument("--max-stop", type=float, default=0.015,
                     help="пропускать сделки со стопом шире этой доли от входа")
     ap.add_argument("--source", choices=["auto", "api", "vision"], default="auto",
@@ -438,7 +516,7 @@ def main():
 
     import requests
     p = Params(top_n=args.top, days=args.days, entry_mode=args.entry,
-               stop_buf=args.stop_buf, max_stop=args.max_stop)
+               stop_buf=args.stop_buf, max_stop=args.max_stop, fade_tf=args.fade_tf)
     out = Path(args.out); out.mkdir(exist_ok=True)
     cache = Path("data_cache"); cache.mkdir(exist_ok=True)
     session = requests.Session()

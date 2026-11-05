@@ -21,7 +21,10 @@ import breakout_backtest as bb
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cache", default="data_cache")
+    ap.add_argument("--days", type=int, default=90, help="какие файлы кэша брать (*_1m_<days>d_*)")
     ap.add_argument("--stop-bufs", default="0.003,0.006,0.01")
+    ap.add_argument("--fade-tfs", default="1,5", help="ТФ выхода «под уровнем» для B/C, мин")
+    ap.add_argument("--entries", default="market,retest")
     ap.add_argument("--max-stop", type=float, default=0.03)
     ap.add_argument("--retest-buf", type=float, default=0.001)
     ap.add_argument("--retest-window", type=int, default=30)
@@ -29,7 +32,7 @@ def main():
     ap.add_argument("--out", default="results/experiments")
     args = ap.parse_args()
 
-    files = sorted(Path(args.cache).glob("*_1m_*.csv.gz"))
+    files = sorted(Path(args.cache).glob(f"*_1m_{args.days}d_*.csv.gz"))
     if not files:
         raise SystemExit("В data_cache пусто: сначала запусти breakout_backtest.py")
     base = bb.Params(max_stop=args.max_stop, retest_buf=args.retest_buf,
@@ -45,13 +48,17 @@ def main():
     filters = (True, False) if args.no_filter else (True,)
     stop_bufs = [float(x) for x in args.stop_bufs.split(",")]
     trades = []
-    for mode in ("market", "retest"):
+    fade_tfs = [int(x) for x in args.fade_tfs.split(",")]
+    for mode in args.entries.split(","):
         for sb in stop_bufs:
-            p = replace(base, entry_mode=mode, stop_buf=sb)
-            for sym, df in prepared.items():
-                for v in ("A", "B", "C"):
-                    for f in filters:
-                        trades += bb.simulate(df, sym, v, f, p)
+            for ft in fade_tfs:
+                p = replace(base, entry_mode=mode, stop_buf=sb, fade_tf=ft)
+                for sym, df in prepared.items():
+                    for v in ("A", "B", "C"):
+                        if v == "A" and ft != fade_tfs[0]:
+                            continue          # у A нет выхода «под уровнем», не дублируем
+                        for f in filters:
+                            trades += bb.simulate(df, sym, v, f, p)
     t = pd.DataFrame(trades)
     out = Path(args.out); out.mkdir(parents=True, exist_ok=True)
     t.to_csv(out / "trades.csv", index=False)
@@ -60,8 +67,9 @@ def main():
     end = max(d.index[-1] for d in prepared.values())
     cutoff = start + (end - start) * (1 - base.oos_frac)
     rows = []
-    for (mode, sb, v, f), g in t.groupby(["entry_mode", "stop_buf", "variant", "in_play_filter"]):
-        row = {"вход": mode, "стоп_%": sb * 100, "вариант": v, "фильтр": "да" if f else "нет",
+    for (mode, sb, ft, v, f), g in t.groupby(["entry_mode", "stop_buf", "fade_tf", "variant", "in_play_filter"]):
+        row = {"вход": mode, "стоп_%": sb * 100, "выход_ТФ": "-" if v == "A" else ft,
+               "вариант": v, "фильтр": "да" if f else "нет",
                "ср_стоп_%": round(g.risk_pct.mean(), 2)}
         for part, gg in (("", g), ("обуч_", g[g.entry_time < cutoff]),
                          ("OOS_", g[g.entry_time >= cutoff])):
@@ -69,6 +77,7 @@ def main():
             keys = ("сделок", "винрейт_%", "средний_R", "сумма_R", "профит_фактор") if not part \
                 else ("сделок", "средний_R", "профит_фактор")
             row.update({part + k: st.get(k) for k in keys})
+        row["ср_pnl_%"] = round(g.pnl_pct.mean(), 3)
         rows.append(row)
     summary = pd.DataFrame(rows)
     summary.to_csv(out / "summary.csv", index=False)
