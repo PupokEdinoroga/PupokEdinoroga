@@ -104,6 +104,8 @@ def _get(session, path, params=None, tries=6):
                 print(f"  лимит запросов биржи, жду {wait} с...")
                 time.sleep(wait)
                 continue
+            if r.status_code in (403, 451):        # регион заблокирован, повторять бесполезно
+                raise RuntimeError(f"Binance отказал в доступе (HTTP {r.status_code}), регион заблокирован")
             r.raise_for_status()
             return r.json()
         except requests.RequestException as e:
