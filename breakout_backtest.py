@@ -73,6 +73,11 @@ class Params:
     break_buf: float = 0.0005        # закрытие выше уровня хотя бы на 0,05%
     vol_mult: float = 2.0
     vol_window: int = 30
+    # вход: "market" — по открытию следующей минуты после сигнала;
+    #       "retest" — лимитка на уровень + retest_buf, ждём отката не дольше retest_window минут
+    entry_mode: str = "market"
+    retest_buf: float = 0.001
+    retest_window: int = 30
     # стоп
     stop_buf: float = 0.003
     min_stop: float = 0.002
@@ -309,11 +314,29 @@ def simulate(df: pd.DataFrame, symbol: str, variant: str, use_in_play: bool, p: 
     for s in np.flatnonzero(sig):
         if s <= busy_until or s + 1 >= n:
             continue
-        e = s + 1
         level = lvl_arr[s]
-        entry = o[e] * (1 + slip)
         stop = level * (1 - p.stop_buf)
-        risk = (entry - stop) / entry
+        if p.entry_mode == "retest":
+            # лимитка выставляется после закрытия сигнальной минуты. Считаем её исполненной,
+            # только если цена прошла НИЖЕ лимита (касание без пробоя не считаем: очередь).
+            lim = level * (1 + p.retest_buf)
+            e = None
+            for j in range(s + 1, min(s + 1 + p.retest_window, n)):
+                if l[j] < lim:
+                    e = j
+                    break
+            if e is None:
+                busy_until = min(s + p.retest_window, n - 1)
+                continue
+            entry = min(o[e], lim)          # открылись ниже лимита — исполнение по открытию
+            # размер позиции задаётся при выставлении лимитки, поэтому риск считаем от лимита
+            risk = (lim - stop) / lim
+            risk_px = lim - stop
+        else:
+            e = s + 1
+            entry = o[e] * (1 + slip)
+            risk = (entry - stop) / entry
+            risk_px = entry - stop
         if not (p.min_stop <= risk <= p.max_stop):
             continue
         tp = None
@@ -364,9 +387,10 @@ def simulate(df: pd.DataFrame, symbol: str, variant: str, use_in_play: bool, p: 
         exit_px = sum(sz * px for sz, px in exits)
         trades.append({
             "symbol": symbol, "variant": variant, "in_play_filter": use_in_play,
-            "entry_time": idx[e], "exit_time": idx[j], "level": level,
+            "entry_mode": p.entry_mode, "stop_buf": p.stop_buf,
+            "signal_time": idx[s], "entry_time": idx[e], "exit_time": idx[j], "level": level,
             "touches": int(touches[s]), "entry": entry, "exit_avg": exit_px,
-            "risk_pct": risk * 100, "pnl_pct": pnl * 100, "R": pnl / risk,
+            "risk_pct": risk * 100, "pnl_pct": pnl * 100, "R": pnl * entry / risk_px,
             "reason": reason, "hold_min": j - e + 1,
         })
         busy_until = j
@@ -401,13 +425,20 @@ def main():
     ap.add_argument("--top", type=int, default=15)
     ap.add_argument("--days", type=int, default=90)
     ap.add_argument("--out", default="results")
+    ap.add_argument("--entry", choices=["market", "retest"], default="market",
+                    help="market: вход по рынку после сигнала; retest: лимитка на откат к уровню")
+    ap.add_argument("--stop-buf", type=float, default=0.003,
+                    help="стоп ниже уровня на эту долю (0.003 = 0,3%%)")
+    ap.add_argument("--max-stop", type=float, default=0.015,
+                    help="пропускать сделки со стопом шире этой доли от входа")
     ap.add_argument("--source", choices=["auto", "api", "vision"], default="auto",
                     help="api: REST Binance Futures; vision: архив data.binance.vision; "
                          "auto: API, а при его недоступности архив")
     args = ap.parse_args()
 
     import requests
-    p = Params(top_n=args.top, days=args.days)
+    p = Params(top_n=args.top, days=args.days, entry_mode=args.entry,
+               stop_buf=args.stop_buf, max_stop=args.max_stop)
     out = Path(args.out); out.mkdir(exist_ok=True)
     cache = Path("data_cache"); cache.mkdir(exist_ok=True)
     session = requests.Session()
