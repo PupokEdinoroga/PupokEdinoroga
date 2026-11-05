@@ -75,6 +75,122 @@ def list_symbols():
     return syms
 
 
+def _symbol_klines(sym, interval, start, end):
+    """Свечи интервала interval за [start, end): месячные файлы, текущий месяц — дневные."""
+    parts, m = [], start.tz_localize(None).to_period("M")
+    end_p = end.tz_localize(None).to_period("M")
+    while m <= end_p:
+        ms = m.to_timestamp().tz_localize("UTC")
+        me = (m + 1).to_timestamp().tz_localize("UTC")
+        got = None
+        if me <= end:
+            got = fetch_zip_csv(f"{VISION}/monthly/klines/{sym}/{interval}/{sym}-{interval}-{m}.zip")
+            if got is None:            # за закрытый месяц нет файла — символа в этом месяце не было
+                m += 1
+                continue
+        if got is None:
+            day = max(ms, start.normalize())
+            while day < min(me, end):
+                g = fetch_zip_csv(f"{VISION}/daily/klines/{sym}/{interval}/{sym}-{interval}-{day:%Y-%m-%d}.zip")
+                if g is not None:
+                    parts.append(g)
+                day += pd.Timedelta(days=1)
+        else:
+            parts.append(got)
+        m += 1
+    if not parts:
+        return None
+    df = pd.concat(parts, ignore_index=True)
+    df = df[["t", "o", "h", "l", "c", "v", "qv", "n"]].copy()
+    df["t"] = pd.to_numeric(df["t"])
+    df.loc[df["t"] > 1e14, "t"] //= 1000                    # в новых файлах время в микросекундах
+    df["t"] = pd.to_datetime(df["t"], unit="ms", utc=True)
+    df = df[(df["t"] >= start) & (df["t"] < end)]
+    df["symbol"] = sym
+    return df
+
+
+def _has_recent(sym, start):
+    """Быстрая проверка: есть ли у символа данные после start (по 1d месячным/дневным файлам)."""
+    for i in range(4):
+        try:
+            r = _session().get(S3, params={
+                "prefix": f"data/futures/um/daily/klines/{sym}/1h/{sym}-1h-",
+                "marker": f"data/futures/um/daily/klines/{sym}/1h/{sym}-1h-{start:%Y-%m-%d}"}, timeout=60)
+            r.raise_for_status()
+            return "<Key>" in r.text
+        except requests.RequestException:
+            time.sleep(2 * (i + 1))
+    return True                       # не смогли проверить — лучше скачать лишнее
+
+
+def load_hourly_all(start, end, cache_dir=Path("data_cache"), workers=32):
+    """Часовые свечи всех USDT-M символов за [start, end), включая делистнутые. Кэшируется."""
+    path = cache_dir / f"hourly_all_{start:%Y%m%d}_{end:%Y%m%d}.csv.gz"
+    if path.exists():
+        return pd.read_csv(path, parse_dates=["t"])
+    syms = list_symbols()
+    with ThreadPoolExecutor(workers) as ex:
+        alive = list(ex.map(lambda s: _has_recent(s, start), syms))
+    syms = [s for s, a in zip(syms, alive) if a]
+    print(f"Символов с данными в периоде: {len(syms)}, качаю часовки...", flush=True)
+    with ThreadPoolExecutor(workers) as ex:
+        res = list(ex.map(lambda s: _symbol_klines(s, "1h", start, end), syms))
+    d = pd.concat([r for r in res if r is not None], ignore_index=True)
+    d = d.drop_duplicates(["symbol", "t"]).sort_values(["t", "symbol"])
+    cache_dir.mkdir(exist_ok=True)
+    tmp = path.with_suffix(".tmp.gz")
+    d.to_csv(tmp, index=False)
+    tmp.replace(path)
+    return d
+
+
+def hourly_universe(hourly: pd.DataFrame, top_trades=20, top_move=20, min_move=0.0,
+                    vol_surge=0.0, base_days=7):
+    """Списки «в игре» на каждый час по ТЕКУЩЕМУ дню UTC.
+
+    На час, начинающийся в T, используются только закрытые часовые свечи дня до T:
+    рост = close последнего часа / open первого часа дня − 1, сделки = сумма за день.
+      long:  топ-N по росту  ∪  (топ-N по сделкам, у кого рост > 0)
+      short: топ-N по падению ∪ (топ-N по сделкам, у кого рост < 0)
+    Опции версии 2.1:
+      min_move  — дополнительно |рост от открытия дня| ≥ min_move (0.2 = 20%);
+      vol_surge — темп оборота сегодня (оборот за прошедшие часы × 24/часов) ≥ vol_surge ×
+                  средний дневной оборот за base_days прошлых дней.
+    В первый час дня (00:00–01:00 UTC) списков нет.
+    Возвращает DataFrame [t, symbol, side, growth, trades_today]."""
+    h = hourly[["symbol", "t", "o", "c", "n", "qv"]].copy()
+    h["day"] = h["t"].dt.normalize()
+    h = h.sort_values(["symbol", "t"])
+    g = h.groupby(["symbol", "day"])
+    h["day_open"] = g["o"].transform("first")
+    h["n_cum"] = g["n"].cumsum()
+    h["qv_pace"] = g["qv"].cumsum() * 24 / (g.cumcount() + 1)
+    dq = h.groupby(["symbol", "day"])["qv"].sum().rename("dqv").reset_index()
+    dq["base_qv"] = (dq.groupby("symbol")["dqv"]
+                     .transform(lambda v: v.shift(1).rolling(base_days, min_periods=3).mean()))
+    h = h.merge(dq[["symbol", "day", "base_qv"]], on=["symbol", "day"], how="left")
+    h["growth"] = h["c"] / h["day_open"] - 1
+    h["t_valid"] = h["t"] + pd.Timedelta(hours=1)          # доступно после закрытия часа
+    h = h[h["t_valid"].dt.normalize() == h["day"]]          # последний час дня не переносим на завтра
+    rows = []
+    for t, x in h.groupby("t_valid"):
+        top_n = x.nlargest(top_trades, "n_cum")
+        longs = set(x.nlargest(top_move, "growth").symbol) | set(top_n[top_n.growth > 0].symbol)
+        shorts = set(x.nsmallest(top_move, "growth").symbol) | set(top_n[top_n.growth < 0].symbol)
+        if min_move > 0 or vol_surge > 0:
+            ok = pd.Series(True, index=x.index)
+            if vol_surge > 0:
+                ok &= x.qv_pace >= vol_surge * x.base_qv
+            longs &= set(x[ok & (x.growth >= min_move)].symbol)
+            shorts &= set(x[ok & (x.growth <= -min_move)].symbol)
+        xi = x.set_index("symbol")
+        for side, ss in (("long", longs), ("short", shorts)):
+            for s in ss:
+                rows.append((t, s, side, xi.at[s, "growth"], xi.at[s, "n_cum"]))
+    return pd.DataFrame(rows, columns=["t", "symbol", "side", "growth", "trades_today"])
+
+
 def _symbol_daily(sym, start, end):
     parts, m = [], start.to_period("M")
     while m <= end.to_period("M"):
