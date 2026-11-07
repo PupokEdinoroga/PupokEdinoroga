@@ -100,7 +100,7 @@ def download():
     print("спотовых символов с часовками:", len(s))
 
 
-def simulate(entry, exit_=0.0001, t_from=START, t_to=END):
+def simulate(entry, exit_=0.0001, t_from=START, t_to=END, close_open=False):
     fund = pd.read_csv(CACHE / "funding_all.csv.gz")
     fund["t"] = pd.to_datetime(fund.calc_time // 1000 * 1000, unit="ms", utc=True).dt.floor("1h")
     fund["r8"] = fund.rate * 8 / fund.interval_h
@@ -134,7 +134,16 @@ def simulate(entry, exit_=0.0001, t_from=START, t_to=END):
                                "funding": pos["fund"], "perp_leg": 1 - px / pos["pe"],
                                "spot_leg": sx / pos["se"] - 1})
                 pos = None
+        if pos is not None and close_open:            # открытая на конец данных — закрываем по последним ценам
+            tl = f.t.iloc[-1]
+            px, sx = perp_o.get((sym, tl)), spot_o.get((sym, tl))
+            if px and sx:
+                trades.append({"symbol": sym, "t0": pos["t0"], "t1": tl, "n_fund": pos["n"],
+                               "funding": pos["fund"], "perp_leg": 1 - px / pos["pe"],
+                               "spot_leg": sx / pos["se"] - 1, "open_at_end": True})
     t = pd.DataFrame(trades)
+    if "open_at_end" in t:
+        t["open_at_end"] = t["open_at_end"].fillna(False).astype(bool)
     if t.empty:
         return t
     t["basis"] = t.perp_leg + t.spot_leg
