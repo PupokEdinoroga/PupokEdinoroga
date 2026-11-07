@@ -298,14 +298,25 @@ def simulate(workers=8):
                     busy[mode][r.side] = res["exit_ms"]
         return out
 
-    res, done = [], 0
-    with ThreadPoolExecutor(workers) as ex:
-        for out in ex.map(work, groups):
-            res += out
-            done += 1
-            if done % 200 == 0:
-                print(f"  {done}/{len(groups)} монето-дней, сделок {len(res)}", flush=True)
-    t = pd.DataFrame(res)
+    # возобновляемый прогон: готовые монето-дни дописываются в part-файл, при перезапуске пропускаются
+    part, donef = OUT / "trades_dev.part.csv", OUT / "done_days.txt"
+    done_keys = set(donef.read_text().split()) if donef.exists() else set()
+    key = lambda sym, day: f"{sym}|{day:%Y-%m-%d}"
+    todo = [g for g in groups if key(*g[0]) not in done_keys]
+    print(f"уже готово {len(groups) - len(todo)}, осталось {len(todo)}", flush=True)
+    done = len(groups) - len(todo)
+    for i in range(0, len(todo), 100):
+        chunk = todo[i:i + 100]
+        with ThreadPoolExecutor(workers) as ex:
+            outs = list(ex.map(work, chunk))
+        rows = [r for o in outs for r in o]
+        if rows:
+            pd.DataFrame(rows).to_csv(part, mode="a", header=not part.exists(), index=False)
+        with open(donef, "a") as f:
+            f.write("\n".join(key(*g[0]) for g in chunk) + "\n")
+        done += len(chunk)
+        print(f"  {done}/{len(groups)} монето-дней", flush=True)
+    t = pd.read_csv(part)
     t.to_csv(OUT / "trades_dev.csv", index=False)
     report(t)
 
