@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.pyc
+
+# Бот: лог и локальные настройки с логином/паролем
+murdrum-bot/bot.log
+murdrum-bot/settings.local.ini
+
+# Файлы клиента MU не храним в репозитории
+client/
+*.exe
+*.dll
