@@ -87,39 +87,46 @@ def walkable(grid: bytes, x: int, y: int) -> bool:
     return 0 <= x < 256 and 0 <= y < 256 and not (grid[y * 256 + x] & (NOMOVE | NOGROUND))
 
 
+def _neighbors(grid: bytes, cx: int, cy: int):
+    """Соседи по 8 направлениям без срезания углов стен: (x, y, цена шага)."""
+    for dx in (-1, 0, 1):
+        for dy in (-1, 0, 1):
+            if not dx and not dy:
+                continue
+            nx, ny = cx + dx, cy + dy
+            if not walkable(grid, nx, ny):
+                continue
+            if dx and dy and not (walkable(grid, cx + dx, cy) and walkable(grid, cx, cy + dy)):
+                continue
+            yield nx, ny, (14 if dx and dy else 10)
+
+
 def find_path(grid: bytes, start, goal, max_nodes=200000):
     """A* по 8 направлениям. Возвращает список клеток [(x, y), ...] или None."""
-    if not walkable(grid, *goal):
+    if not walkable(grid, *start) or not walkable(grid, *goal):
         return None
-    openq = [(0, start)]
+    openq = [(0, 0, start)]
     came = {start: None}
     cost = {start: 0}
     n = 0
     while openq and n < max_nodes:
-        _, cur = heapq.heappop(openq)
+        _, g, cur = heapq.heappop(openq)
+        if g > cost[cur]:
+            continue  # устаревшая запись очереди
         n += 1
         if cur == goal:
             path = []
-            while cur:
+            while cur is not None:
                 path.append(cur)
                 cur = came[cur]
             return path[::-1]
-        cx, cy = cur
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                if not dx and not dy:
-                    continue
-                nx, ny = cx + dx, cy + dy
-                if not walkable(grid, nx, ny):
-                    continue
-                if dx and dy and not (walkable(grid, cx + dx, cy) and walkable(grid, cx, cy + dy)):
-                    continue  # не срезать углы стен
-                nc = cost[cur] + (14 if dx and dy else 10)
-                if nc < cost.get((nx, ny), 1 << 30):
-                    cost[(nx, ny)] = nc
-                    came[(nx, ny)] = cur
-                    h = 10 * max(abs(goal[0] - nx), abs(goal[1] - ny))
-                    heapq.heappush(openq, (nc + h, (nx, ny)))
+        for nx, ny, step in _neighbors(grid, *cur):
+            nc = g + step
+            if nc < cost.get((nx, ny), 1 << 30):
+                cost[(nx, ny)] = nc
+                came[(nx, ny)] = cur
+                h = 10 * max(abs(goal[0] - nx), abs(goal[1] - ny))
+                heapq.heappush(openq, (nc + h, nc, (nx, ny)))
     return None
 
 
@@ -133,18 +140,39 @@ def waypoints(path, step=6):
     return pts
 
 
+def is_safe(grid: bytes, x: int, y: int) -> bool:
+    return bool(grid[y * 256 + x] & SAFE)
+
+
 def drop_spot(grid: bytes, pos, min_dist=6, max_dist=10):
-    """Проходимая клетка в min..max клетках от pos, вне безопасной зоны — туда уносим мусор."""
+    """Ближайшая достижимая клетка в min..max клетках (по прямой) от pos, вне безопасной зоны.
+
+    Туда бот уходит выбрасывать мусор, чтобы Space на споте его не подбирал.
+    Один обход в ширину от pos, а не A* на каждого кандидата. None, если такой клетки нет.
+    """
+    if not walkable(grid, *pos):
+        return None
     px, py = pos
-    best = None
-    for r in range(min_dist, max_dist + 1):
-        for dx in range(-r, r + 1):
-            for dy in (-r, r):
-                for x, y in ((px + dx, py + dy), (px + dy, py + dx)):
-                    if walkable(grid, x, y) and find_path(grid, pos, (x, y), 20000):
-                        best = (x, y)
-                        return best
-    return best
+    seen = {pos}
+    frontier = [pos]
+    # путь в обход стен может быть длиннее прямой — ищем с запасом
+    for _ in range(max_dist * 3):
+        nxt = []
+        for cx, cy in frontier:
+            for nx, ny, _step in _neighbors(grid, cx, cy):
+                if (nx, ny) in seen:
+                    continue
+                seen.add((nx, ny))
+                d = max(abs(nx - px), abs(ny - py))
+                if d > max_dist:
+                    continue
+                if d >= min_dist and not is_safe(grid, nx, ny):
+                    return (nx, ny)
+                nxt.append((nx, ny))
+        if not nxt:
+            break
+        frontier = nxt
+    return None
 
 
 if __name__ == "__main__":

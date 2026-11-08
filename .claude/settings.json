@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "P=$(command -v python3 || command -v python); \"$P\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/check_mu_data.py\"",
+            "timeout": 180
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "P=$(command -v python3 || command -v python); \"$P\" \"$CLAUDE_PROJECT_DIR/.claude/hooks/block_secret_commit.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
