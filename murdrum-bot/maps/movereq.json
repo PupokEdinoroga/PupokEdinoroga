@@ -1,0 +1,134 @@
+[
+ {
+  "name": "Lorencia",
+  "level": 10,
+  "zen": 20000,
+  "gate": 17
+ },
+ {
+  "name": "Noria",
+  "level": 10,
+  "zen": 20000,
+  "gate": 27
+ },
+ {
+  "name": "Devias",
+  "level": 20,
+  "zen": 20000,
+  "gate": 22
+ },
+ {
+  "name": "Devias2",
+  "level": 20,
+  "zen": 25000,
+  "gate": 72
+ },
+ {
+  "name": "Dungeon2",
+  "level": 40,
+  "zen": 35000,
+  "gate": 6
+ },
+ {
+  "name": "Dungeon3",
+  "level": 50,
+  "zen": 40000,
+  "gate": 10
+ },
+ {
+  "name": "Atlans",
+  "level": 70,
+  "zen": 40000,
+  "gate": 49
+ },
+ {
+  "name": "Atlans2",
+  "level": 80,
+  "zen": 45000,
+  "gate": 75
+ },
+ {
+  "name": "LostTower",
+  "level": 50,
+  "zen": 50000,
+  "gate": 42
+ },
+ {
+  "name": "LostTower3",
+  "level": 50,
+  "zen": 60000,
+  "gate": 33
+ },
+ {
+  "name": "LostTower5",
+  "level": 60,
+  "zen": 70000,
+  "gate": 37
+ },
+ {
+  "name": "LostTower7",
+  "level": 70,
+  "zen": 80000,
+  "gate": 41
+ },
+ {
+  "name": "Tarkan",
+  "level": 140,
+  "zen": 80000,
+  "gate": 57
+ },
+ {
+  "name": "Tarkan2",
+  "level": 150,
+  "zen": 90000,
+  "gate": 77
+ },
+ {
+  "name": "Icarus",
+  "level": 170,
+  "zen": 100000,
+  "gate": 63
+ },
+ {
+  "name": "Aida",
+  "level": 250,
+  "zen": 150000,
+  "gate": 119
+ },
+ {
+  "name": "Crywolf",
+  "level": 250,
+  "zen": 150000,
+  "gate": 118
+ },
+ {
+  "name": "ValleyOfLoren",
+  "level": 100,
+  "zen": 75000,
+  "gate": 104
+ },
+ {
+  "name": "KantruRuins",
+  "level": 250,
+  "zen": 100000,
+  "gate": 138
+ },
+ {
+  "name": "KantruRuins2",
+  "level": 250,
+  "zen": 100000,
+  "gate": 141
+ },
+ {
+  "name": "KantruRemains",
+  "level": 250,
+  "zen": 100000,
+  "gate": 139
+ },
+ {
+  "name": "Stadium",
+  "level": 50,
+  "zen": 20000,
+  "gate": 50
+ }
+]
