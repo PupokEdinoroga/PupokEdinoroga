@@ -6,3 +6,5 @@ bot/*.sqlite
 bot/bot.log
 bot/STOP
 bot/.venv/
+bot/ob_data/
+bot/recorder.log

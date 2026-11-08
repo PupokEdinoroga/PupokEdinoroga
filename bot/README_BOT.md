@@ -93,3 +93,31 @@ journalctl -u tradebot -f       # живой журнал (выход: Ctrl+C)
 - `capital_usd` — сколько денег отдано боту (сумма маржи открытых живых позиций не превысит её);
 - `max_open_positions` — максимум живых позиций одновременно;
 - `daily_loss_limit_usd` — при таком убытке за сутки (UTC) живые входы останавливаются до следующего дня.
+
+---
+
+## Регистратор стакана (для проверки скальпинга по плотностям)
+Пишет ленту сделок и стакан самых волатильных/активных монет, размечает аномальные заявки (≥ 10× медианы) и «переставляшей». Через 1–2 недели — проверка стратегий на этих данных:
+```bash
+.venv/bin/pip install websocket-client
+python test_recorder.py            # «ВСЕ ПРОВЕРКИ РЕГИСТРАТОРА ПРОЙДЕНЫ»
+sudo tee /etc/systemd/system/obrecorder.service >/dev/null <<UNIT
+[Unit]
+Description=order book recorder
+After=network-online.target
+
+[Service]
+WorkingDirectory=$(pwd)
+ExecStart=$(pwd)/.venv/bin/python recorder.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+sudo systemctl daemon-reload && sudo systemctl enable --now obrecorder
+journalctl -u obrecorder -f
+```
+- Место: ~0,3–0,6 ГБ в день на 20 монет (gzip). Нужен VPS с диском от 20 ГБ; старше `keep_days` удаляется само.
+- Раз в сутки в Telegram приходит сводка: сколько записано сделок, снимков, аномальных заявок.
+- Проверка стратегий по записанному: `.venv/bin/python analyze_ob.py ob_data` (или пришли архив папки `ob_data` — разберём вместе).
