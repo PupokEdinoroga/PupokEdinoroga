@@ -28,7 +28,11 @@ import yaml
 
 log = logging.getLogger("recorder")
 REST = "https://fapi.binance.com"
-WS = "wss://fstream.binance.com/stream?streams="
+# С 2026-03-06 Binance разделил WebSocket USDⓈ-M: сделки — /market, стакан — /public
+WS_ROUTES = {
+    "market": ("wss://fstream.binance.com/market/stream?streams=", "{s}@aggTrade"),
+    "public": ("wss://fstream.binance.com/public/stream?streams=", "{s}@depth20@500ms"),
+}
 EXCLUDE = {"BTCUSDT", "ETHUSDT", "USDCUSDT", "FDUSDUSDT", "BTCDOMUSDT"}
 
 DEFAULTS = {"data_dir": "ob_data", "max_symbols": 20, "top_by_change": 10, "top_by_trades": 10,
@@ -120,7 +124,7 @@ class Recorder:
         self.cfg = cfg
         self.w = Writer(cfg["data_dir"])
         self.symbols = []
-        self.ws = None
+        self.ws = {}
         self.last_top = {}
         self.prev_anom = {}
         self.counts = {"trades": 0, "top": 0, "book": 0, "anom": 0, "moved": 0}
@@ -143,20 +147,22 @@ class Recorder:
                                                               "b": d["b"], "a": d["a"]}, separators=(",", ":")))
                 self.counts["top"] += 1
 
-    def _run_ws(self, symbols):
+    def _run_ws(self, route, symbols):
         import websocket
-        streams = "/".join(f"{s.lower()}@aggTrade/{s.lower()}@depth20@500ms" for s in symbols)
-        self.ws = websocket.WebSocketApp(WS + streams, on_message=self._on_message,
-                                         on_error=lambda _, e: log.warning(f"ws ошибка: {e}"))
-        self.ws.run_forever(ping_interval=60, ping_timeout=20)
+        base, pattern = WS_ROUTES[route]
+        streams = "/".join(pattern.format(s=s.lower()) for s in symbols)
+        ws = websocket.WebSocketApp(base + streams, on_message=self._on_message,
+                                    on_error=lambda _, e: log.warning(f"ws {route} ошибка: {e}"))
+        self.ws[route] = ws
+        ws.run_forever(ping_interval=60, ping_timeout=20)
 
-    def _ws_loop(self):
+    def _ws_loop(self, route):
         while not self.stop:
             syms = list(self.symbols)
             if not syms:
                 time.sleep(5); continue
-            log.info(f"ws подключение: {len(syms)} монет")
-            self._run_ws(syms)                      # возвращается при обрыве или при смене списка
+            log.info(f"ws {route}: подключение, {len(syms)} монет")
+            self._run_ws(route, syms)               # возвращается при обрыве или при смене списка
             time.sleep(3)
 
     # --- REST: выбор монет и глубокие снимки
@@ -167,8 +173,8 @@ class Recorder:
         if new != self.symbols:
             self.symbols = new
             self.notify(f"📼 Регистратор: пишу {len(new)} монет: {', '.join(new)}")
-            if self.ws:
-                self.ws.close()                     # переподключится с новым списком
+            for ws in list(self.ws.values()):
+                ws.close()                          # переподключатся с новым списком
 
     def snapshot(self, sym):
         r = requests.get(f"{REST}/fapi/v1/depth", params={"symbol": sym, "limit": 1000}, timeout=20)
@@ -196,7 +202,9 @@ class Recorder:
         self.prev_anom[sym] = an
 
     def run(self):
-        threading.Thread(target=self._ws_loop, daemon=True).start()
+        for route in WS_ROUTES:
+            threading.Thread(target=self._ws_loop, args=(route,), daemon=True).start()
+        started, warned = time.time(), False
         last_sel = last_snap = last_flush = last_report = 0
         day = None
         while not self.stop:
@@ -211,6 +219,11 @@ class Recorder:
                     last_snap = now
                 if now - last_flush >= 10:
                     self.w.flush(); last_flush = now
+                if not warned and now - started > 300 and self.symbols and \
+                        (self.counts["trades"] == 0 or self.counts["top"] == 0):
+                    warned = True
+                    self.notify(f"⚠️ Регистратор: за 5 минут сделок {self.counts['trades']}, "
+                                f"снимков верха {self.counts['top']} — WebSocket не отдаёт данные")
                 today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 if today != day:
                     if day is not None:
