@@ -100,3 +100,10 @@ Gate хранит 1m только ~7 дней, OKX history-candles доступ�
 - PRE (правила «9 шагов»: стоп-ордер до уровня, стоп 0,2%, тейки +1%/+2,5%): −0,18%, до издержек −0,03%; стоп в 46%.
 - Фильтр «≥100 млн $ и ≥2 млн сделок за 24 ч»: до издержек +0,05…0,06%, после — около −0,14%.
 Вывод: пробой у монет «в игре» даже с точностью до сделки ≈ 0 до издержек; механического преимущества нет.
+
+## Развёртывание (2026-11-08)
+VPS Contabo (Ubuntu), Binance API доступен. Код в ~/PupokEdinoroga, ветка claude/backtester-breakout-continue-uwflc3.
+Службы systemd: `tradebot` (bot/main.py, все стратегии в paper) и `obrecorder` (bot/recorder.py, ~17 монет).
+Telegram подключён (token/chat_id в bot/config.yaml на сервере, не в git). Обновление: git pull + systemctl restart.
+WebSocket Binance USDⓈ-M с 2026-03-06: сделки — wss://fstream.binance.com/market, стакан — /public (учтено в recorder.py).
+План: ~2 недели бумаги + запись стакана → разбор отчёта бота и `python analyze_ob.py ob_data`.
