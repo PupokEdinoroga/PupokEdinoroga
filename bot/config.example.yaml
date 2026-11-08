@@ -1,0 +1,48 @@
+# Скопируй в config.yaml и заполни. config.yaml в git не попадает.
+
+exchange:
+  name: binanceusdm          # USDT-M фьючерсы Binance (через ccxt)
+  api_key: ""                # ключ БЕЗ права вывода средств
+  api_secret: ""
+
+telegram:
+  token: ""                  # от @BotFather
+  chat_id: ""                # твой chat id (см. README_BOT.md)
+
+loop_seconds: 60             # как часто бот просыпается
+db_path: bot_state.sqlite
+
+risk:
+  capital_usd: 100           # сколько денег отдано боту
+  max_open_positions: 4      # всего одновременно по всем живым стратегиям
+  daily_loss_limit_usd: 15   # минус за сутки (UTC) больше этого — живая торговля на паузе до завтра
+  kill_switch_file: STOP     # если создать файл STOP рядом с ботом — новые сделки не открываются
+
+costs:                       # для бумажного режима: как в бэктесте
+  fee: 0.0005                # комиссия на сторону
+  slippage: 0.0005           # проскальзывание на рыночный ордер
+
+pipeline:                    # экзамен «бумага → деньги» и автоотключение
+  min_paper_trades: 30       # минимум бумажных сделок до экзамена
+  min_t_stat: 2.0            # надёжность результата
+  min_avg_pnl_pct: 0.3       # средний результат сделки после издержек, %
+  demote_last_n: 30          # смотрим последние N живых сделок
+  demote_avg_pnl_pct: -0.5   # если их среднее хуже — стратегия обратно на бумагу
+  auto_promote: false        # false: бот только сообщает, что стратегия сдала экзамен; включаешь сам
+
+strategies:
+  listing_short:
+    mode: paper              # paper | live | off
+    notional_usd: 20         # объём позиции
+    leverage: 2              # изолированная маржа = 20/2 = 10 $ — больше этого одна сделка не потеряет
+    enter_after_hours: 24    # через сколько часов после листинга входим
+    entry_window_hours: 2    # если бот был выключен и окно прошло — сделку пропускаем
+    hold_hours: 72           # держим 3 дня
+    min_quote_volume_24h: 0  # фильтр оборота, $ (0 = как в бэктесте, без фильтра)
+
+  funding_arb:
+    mode: paper              # только бумага: на 100 $ помещается одна позиция
+    notional_usd: 60
+    entry_rate_8h: 0.0005    # вход при фандинге ≥ 0,05% за 8 ч
+    exit_rate_8h: 0.0001     # выход при < 0,01%
+    min_quote_volume_24h: 5000000

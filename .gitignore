@@ -1,3 +1,8 @@
 data_cache/
 results/
 __pycache__/
+bot/config.yaml
+bot/*.sqlite
+bot/bot.log
+bot/STOP
+bot/.venv/
