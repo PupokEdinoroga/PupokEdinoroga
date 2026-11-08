@@ -40,6 +40,25 @@ strategies:
     hold_hours: 72           # держим 3 дня
     min_quote_volume_24h: 0  # фильтр оборота, $ (0 = как в бэктесте, без фильтра)
 
+  listing_short_50m:         # тот же шорт листингов, но только при обороте ≥ 50 млн $ за сутки (из видео WinTrading)
+    module: listing_short
+    mode: paper
+    notional_usd: 20
+    leverage: 2
+    enter_after_hours: 24
+    entry_window_hours: 2
+    hold_hours: 72
+    min_quote_volume_24h: 50000000
+
+  hour_drift:                # лонг корзины альтов в часы после смены 4ч свечи — только бумага
+    mode: paper
+    hours: [0, 16]           # UTC
+    entry_window_minutes: 5
+    hold_minutes: 60
+    basket_size: 5
+    notional_usd: 10         # на каждую монету корзины
+    min_quote_volume_24h: 50000000
+
   funding_arb:
     mode: paper              # только бумага: на 100 $ помещается одна позиция
     notional_usd: 60

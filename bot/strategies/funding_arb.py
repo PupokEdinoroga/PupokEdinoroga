@@ -8,7 +8,7 @@ import time
 NAME = "funding_arb"
 
 
-def step(ctx):
+def step(ctx, NAME=NAME):
     cfg = ctx.cfg["strategies"][NAME]
     if ctx.mode(NAME) == "off":
         return

@@ -14,6 +14,9 @@ def stats(positions):
             "sum_usd": sum(p.pnl_usd or 0 for p in positions), "win": 100 * sum(x > 0 for x in v) / n}
 
 
+PAPER_ONLY = {"funding_arb", "hour_drift"}      # для них живой режим не реализован
+
+
 def review(ctx):
     """Раз в сутки: экзамен для бумажных стратегий и проверка живых."""
     pc = ctx.cfg["pipeline"]
@@ -22,7 +25,7 @@ def review(ctx):
         if mode == "paper":
             st = stats(ctx.state.closed_positions(name, "paper"))
             if st["n"] >= pc["min_paper_trades"] and st["t"] >= pc["min_t_stat"] and st["avg"] >= pc["min_avg_pnl_pct"]:
-                if name == "funding_arb":
+                if scfg.get("module", name) in PAPER_ONLY:
                     ctx.notify(f"🎓 {name} сдала экзамен на бумаге ({st['n']} сделок, {st['avg']:+.2f}%, t={st['t']:.1f}), "
                                f"но живой режим для неё не реализован")
                 elif pc.get("auto_promote"):

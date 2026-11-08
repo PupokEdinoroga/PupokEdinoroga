@@ -8,7 +8,7 @@ import time
 NAME = "listing_short"
 
 
-def step(ctx):
+def step(ctx, NAME=NAME):
     cfg = ctx.cfg["strategies"][NAME]
     mode = ctx.mode(NAME)
     if mode == "off":

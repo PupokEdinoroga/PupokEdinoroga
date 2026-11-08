@@ -20,9 +20,14 @@ from broker import Broker
 from market import Market
 from notifier import Notifier
 from state import State
-from strategies import funding_arb, listing_short
+from strategies import funding_arb, hour_drift, listing_short
 
-STRATEGIES = {"listing_short": listing_short, "funding_arb": funding_arb}
+# модуль стратегии; в config можно завести несколько экземпляров одного модуля (поле module)
+MODULES = {"listing_short": listing_short, "funding_arb": funding_arb, "hour_drift": hour_drift}
+
+
+def module_of(cfg, name):
+    return cfg["strategies"][name].get("module", name)
 log = logging.getLogger("bot")
 
 
@@ -65,8 +70,10 @@ class Ctx:
         if base == "off":
             return "off"
         override = self.state.get("_pipeline", f"mode:{name}")
-        if override == "paper":
-            return "paper"
+        if override in ("paper", "live"):
+            if override == "live" and self.cfg["strategies"][name].get("module", name) in pipeline.PAPER_ONLY:
+                return "paper"
+            return override
         return base
 
     def can_open(self, name, mode):
@@ -99,14 +106,13 @@ def run(cfg, once=False, report=False):
     if report:
         pipeline.daily_report(ctx)
         return
-    notifier.send("🤖 Бот запущен. Режимы: " + ", ".join(f"{n}={ctx.mode(n)}" for n in STRATEGIES))
+    notifier.send("🤖 Бот запущен. Режимы: " + ", ".join(f"{n}={ctx.mode(n)}" for n in cfg["strategies"]))
     last_err = 0
     while True:
         ctx.new_pass()
         try:
-            for name, mod in STRATEGIES.items():
-                if name in cfg["strategies"]:
-                    mod.step(ctx)
+            for name in cfg["strategies"]:
+                MODULES[module_of(cfg, name)].step(ctx, name)
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             if datetime.now(timezone.utc).hour == 0 and state.get("_daily", "last") != today:
                 state.set("_daily", "last", today)
@@ -127,11 +133,18 @@ def main():
     ap.add_argument("--config", default="config.yaml")
     ap.add_argument("--once", action="store_true")
     ap.add_argument("--report", action="store_true")
+    ap.add_argument("--reset", metavar="STRATEGY", help="снять решение конвейера (после автоотключения) — снова по config")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s",
                         handlers=[logging.StreamHandler(), logging.FileHandler("bot.log", encoding="utf-8")])
     with open(a.config, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
+    if a.reset:
+        st = State(cfg.get("db_path", "bot_state.sqlite"))
+        st.db.execute("DELETE FROM kv WHERE strategy='_pipeline' AND key=?", (f"mode:{a.reset}",))
+        st.db.commit()
+        print(f"{a.reset}: решение конвейера снято, режим снова из config.yaml")
+        return
     run(cfg, once=a.once, report=a.report)
 
 

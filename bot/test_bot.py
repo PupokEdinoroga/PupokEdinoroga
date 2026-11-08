@@ -12,7 +12,7 @@ import pipeline
 from broker import Broker
 from notifier import Notifier
 from state import State
-from strategies import funding_arb, listing_short
+from strategies import funding_arb, hour_drift, listing_short
 
 H = 3600
 
@@ -38,7 +38,7 @@ class FakeMarket:
                 for s, o in self.onboard.items()}
 
     def tickers(self):
-        return {s: {"last": p, "quote_volume": 1e8} for s, p in self.prices.items()}
+        return {s: {"last": p, "quote_volume": getattr(self, "vol", {}).get(s, 1e8)} for s, p in self.prices.items()}
 
     def premium_index(self):
         return {s: {"rate": self.rate[s], "next_ms": self.next_ms[s], "mark": self.mark[s]} for s in self.rate}
@@ -69,7 +69,7 @@ def make(mode_listing="paper"):
     cfg["strategies"]["listing_short"]["mode"] = mode_listing
     cfg["pipeline"]["min_paper_trades"] = 3
     clock = Clock()
-    for mod in (listing_short, funding_arb, M, pipeline):
+    for mod in (listing_short, funding_arb, hour_drift, M, pipeline):
         mod.time = clock
     import broker as B
     B.time = clock
@@ -176,6 +176,45 @@ def test_pipeline():
     print("конвейер: экзамен, автоотключение, отчёт — ок")
 
 
+def test_listing_50m_variant():
+    cfg, clock, fm, st, ctx = make()
+    fm.vol = {"NEWUSDT": 2e7}                                    # 20 млн $ — ниже порога варианта 50m
+    listing_short.step(ctx, "listing_short")
+    listing_short.step(ctx, "listing_short_50m")
+    assert len(st.open_positions("listing_short")) == 1 and len(st.open_positions("listing_short_50m")) == 0
+    print("вариант listing_short_50m: фильтр оборота работает, экземпляры независимы — ок")
+
+
+def test_hour_drift():
+    from datetime import datetime, timezone
+    cfg, clock, fm, st, ctx = make()
+    for i in range(8):
+        fm.prices[f"A{i}USDT"] = 1.0; fm.onboard[f"A{i}USDT"] = 1
+    fm.vol = {f"A{i}USDT": (i + 1) * 1e8 for i in range(8)}
+    fm.vol["NEWUSDT"] = fm.vol["OLDUSDT"] = 1e7
+    clock.t = datetime(2026, 11, 9, 16, 1, tzinfo=timezone.utc).timestamp()
+    hour_drift.step(ctx)
+    op = st.open_positions("hour_drift")
+    assert len(op) == 5 and {p.symbol for p in op} == {f"A{i}USDT" for i in range(3, 8)}, [p.symbol for p in op]
+    ctx.new_pass(); hour_drift.step(ctx)
+    assert len(st.open_positions("hour_drift")) == 5, "повторный вход в тот же час"
+    for i in range(8):
+        fm.prices[f"A{i}USDT"] = 1.003
+    clock.t += 3600; ctx.new_pass(); hour_drift.step(ctx)
+    cl = st.closed_positions("hour_drift")
+    assert len(cl) == 5 and not st.open_positions("hour_drift")
+    print(f"hour_drift: корзина 5 самых оборотных в 16:00 UTC, выход через час — ок ({cl[0].pnl_pct:+.2f}% на +0,3% хода)")
+
+
+def test_promote_and_reset():
+    cfg, clock, fm, st, ctx = make()
+    st.set("_pipeline", "mode:listing_short", "live")
+    assert ctx.mode("listing_short") == "live"
+    st.set("_pipeline", "mode:hour_drift", "live")
+    assert ctx.mode("hour_drift") == "paper", "бумажная стратегия не должна уйти в деньги"
+    print("перевод в деньги через конвейер и защита paper-only стратегий — ок")
+
+
 if __name__ == "__main__":
     os.chdir(tempfile.mkdtemp())
     test_listing_paper()
@@ -183,4 +222,7 @@ if __name__ == "__main__":
     test_listing_live_and_risk()
     test_funding_paper()
     test_pipeline()
+    test_listing_50m_variant()
+    test_hour_drift()
+    test_promote_and_reset()
     print("ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ")
