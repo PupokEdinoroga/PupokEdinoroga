@@ -29,6 +29,8 @@ def step(ctx, NAME=NAME):
     if ctx.state.get(NAME, "last_slot") == slot:
         return
     ctx.state.set(NAME, "last_slot", slot)
+    if not ctx.can_open(NAME, "paper"):
+        return
     perps = ctx.perpetuals()
     tk = ctx.tickers()
     cands = [(t["quote_volume"], sid) for sid, t in tk.items()

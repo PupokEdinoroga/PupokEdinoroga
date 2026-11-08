@@ -77,11 +77,11 @@ class Ctx:
         return base
 
     def can_open(self, name, mode):
+        r = self.cfg["risk"]
+        if os.path.exists(r.get("kill_switch_file", "STOP")):     # ⏸ Пауза — и для бумаги, и для денег
+            return False
         if mode != "live":
             return len(self.state.open_positions(mode="paper")) < 100
-        r = self.cfg["risk"]
-        if os.path.exists(r.get("kill_switch_file", "STOP")):
-            return False
         day0 = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
         day_pnl = sum(p.pnl_usd or 0 for p in self.state.closed_positions(mode="live", since=day0))
         if day_pnl <= -abs(r["daily_loss_limit_usd"]):
@@ -107,6 +107,13 @@ def run(cfg, once=False, report=False):
         pipeline.daily_report(ctx)
         return
     notifier.send("🤖 Бот запущен. Режимы: " + ", ".join(f"{n}={ctx.mode(n)}" for n in cfg["strategies"]))
+    state.set("_health", "started", time.time())
+    if not once:
+        import threading
+        from telegram_ui import TelegramUI
+        db = cfg.get("db_path", "bot_state.sqlite")
+        ui = TelegramUI(cfg, state_factory=lambda: State(db), market_factory=lambda: Market(cfg))
+        threading.Thread(target=ui.run_forever, daemon=True).start()
     last_err = 0
     while True:
         ctx.new_pass()
@@ -118,8 +125,11 @@ def run(cfg, once=False, report=False):
                 state.set("_daily", "last", today)
                 pipeline.review(ctx)
                 pipeline.daily_report(ctx)
+            state.set("_health", "last_pass", time.time())
         except Exception as e:
             log.error(traceback.format_exc())
+            state.set("_health", "last_error", f"{type(e).__name__}: {str(e)[:200]}")
+            state.set("_health", "last_error_ts", time.time())
             if time.time() - last_err > 1800:                 # не спамим: не чаще раза в 30 мин
                 notifier.send(f"⚠️ Ошибка: {type(e).__name__}: {str(e)[:300]}")
                 last_err = time.time()

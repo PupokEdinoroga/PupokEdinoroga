@@ -53,7 +53,7 @@ def step(ctx, NAME=NAME):
         if not t or t["quote_volume"] < cfg.get("min_quote_volume_24h", 0):
             continue
         spot = spot or ctx.spot_prices()
-        if sid not in spot:
+        if sid not in spot or not ctx.can_open(NAME, mode):
             continue
         ctx.broker.open(NAME, mode, sid, sid, "short", cfg["notional_usd"], 1, pi[sid]["mark"],
                         extra={"spot_entry": spot[sid], "perp_entry": pi[sid]["mark"], "funding": 0.0})
