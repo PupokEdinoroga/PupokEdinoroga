@@ -43,7 +43,7 @@ class TelegramUI:
     # ---------------------------------------------------------------- транспорт
     def _http(self, method, **params):
         r = requests.post(f"https://api.telegram.org/bot{self.token}/{method}", json=params,
-                          timeout=params.get("timeout", 10) + 15)
+                          timeout=params.get("timeout", 0) + 15)
         return r.json()
 
     def send(self, text):
@@ -162,7 +162,8 @@ class TelegramUI:
         res = r.get("result") or []
         self.offset = res[-1]["update_id"] + 1 if res else None
 
-    def poll_once(self, timeout=25):
+    def poll_once(self, timeout=2):
+        # короткий опрос: на некоторых VPS долгие соединения к Telegram обрываются (Read timed out / reset)
         params = {"timeout": timeout}
         if self.offset is not None:
             params["offset"] = self.offset
@@ -186,9 +187,14 @@ class TelegramUI:
             self.send("Кнопки управления ниже 👇")
         except Exception as e:
             log.warning(f"Telegram UI: {e}")
+        fails = 0
         while True:
             try:
                 self.poll_once()
+                fails = 0
+                time.sleep(1)
             except Exception as e:
-                log.warning(f"Telegram UI: {e}")
-                time.sleep(5)
+                fails += 1
+                if fails in (1, 10) or fails % 100 == 0:          # не засоряем журнал
+                    log.warning(f"Telegram UI (ошибок подряд {fails}): {e}")
+                time.sleep(min(30, 2 * fails))
