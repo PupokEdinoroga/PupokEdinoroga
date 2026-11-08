@@ -1,0 +1,662 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Murdrum</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;900&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0e0b0a; --bg2:#17110f; --panel:#1d1614; --panel2:#251c19; --line:#3a2b25;
+  --ink:#e9dcc7; --muted:#a48f78; --dim:#6d5c4d;
+  --blood:#9e1b1b; --blood2:#c62a2a; --gold:#d6a64a; --gold2:#f2cf7a; --ok:#6fa66a;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{
+  background:radial-gradient(ellipse at 50% -10%,#2a1512 0%,var(--bg) 60%) fixed,var(--bg);
+  color:var(--ink);font-family:"EB Garamond",Georgia,serif;font-size:17px;
+  overflow-x:hidden;user-select:none;-webkit-user-select:none;
+}
+h1,h2,h3,.cinzel{font-family:Cinzel,serif;letter-spacing:.06em}
+button{font:inherit;color:inherit;cursor:pointer}
+.app{max-width:1200px;margin:0 auto;padding:12px 16px 40px;display:grid;gap:16px;
+  grid-template-columns:minmax(0,1fr) minmax(0,1.1fr)}
+header{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  border-bottom:1px solid var(--line);padding-bottom:10px}
+header h1{margin:0;font-size:28px;font-weight:900;color:var(--blood2);text-shadow:0 0 18px #7a0d0d88}
+header h1 small{display:block;font-family:"EB Garamond",serif;font-style:italic;font-size:14px;
+  color:var(--muted);letter-spacing:0;font-weight:400}
+.hbtns{display:flex;gap:8px}
+.ibtn{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;font-size:15px}
+.ibtn:hover{border-color:var(--gold)}
+
+/* left */
+.left{display:flex;flex-direction:column;align-items:center;gap:10px;position:sticky;top:8px;align-self:start}
+.purse{text-align:center}
+.purse .amt{font-family:Cinzel,serif;font-weight:700;font-size:40px;color:var(--gold2);
+  text-shadow:0 0 20px #d6a64a44;line-height:1.1;font-variant-numeric:tabular-nums}
+.purse .lbl{color:var(--muted);font-style:italic}
+.purse .rate{font-size:16px;color:var(--ink);margin-top:2px}
+.seal-wrap{position:relative;width:min(300px,72vw);aspect-ratio:1;margin:8px 0}
+#seal{width:100%;height:100%;border:none;background:none;padding:0;border-radius:50%;
+  transition:transform .06s ease;filter:drop-shadow(0 10px 30px #6a0a0a99);touch-action:manipulation}
+#seal:hover{transform:scale(1.03)}
+#seal:active,#seal.hit{transform:scale(.95)}
+#seal svg{width:100%;height:100%;display:block}
+.float{position:absolute;pointer-events:none;font-family:Cinzel,serif;font-weight:700;color:var(--gold2);
+  text-shadow:0 2px 6px #000;animation:up 1s ease-out forwards;white-space:nowrap;z-index:5}
+.drop{position:absolute;width:7px;height:10px;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;
+  background:var(--blood2);pointer-events:none;animation:fall .8s ease-in forwards;z-index:4}
+@keyframes up{to{transform:translateY(-90px);opacity:0}}
+@keyframes fall{to{transform:translate(var(--dx),var(--dy));opacity:0}}
+.clickinfo{color:var(--muted);font-size:15px;text-align:center}
+.favor{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 14px;width:100%;
+  max-width:360px;text-align:center}
+.favor b{color:var(--gold)}
+.favor button{margin-top:8px;width:100%;background:linear-gradient(#3a2412,#24150b);border:1px solid var(--gold);
+  border-radius:8px;padding:8px;color:var(--gold2);font-family:Cinzel,serif;font-weight:700}
+.favor button:disabled{opacity:.4;cursor:not-allowed;border-color:var(--line);color:var(--dim)}
+.chronicle{width:100%;max-width:360px;font-size:14px;color:var(--muted);font-style:italic;min-height:3.2em;text-align:center}
+
+/* corpse event */
+#corpse{position:fixed;z-index:20;width:64px;height:64px;border:none;background:none;padding:0;display:none;
+  animation:bob 1.6s ease-in-out infinite;filter:drop-shadow(0 0 12px #f2cf7a)}
+#corpse svg{width:100%;height:100%}
+@keyframes bob{50%{transform:translateY(-8px) rotate(6deg)}}
+.buff{background:#3a1212;border:1px solid var(--blood2);border-radius:8px;padding:4px 10px;font-size:14px;color:#ffd7c4;display:none}
+
+/* right */
+.right{display:flex;flex-direction:column;gap:10px;min-width:0}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:8px 8px 0 0;padding:8px 6px;
+  font-family:Cinzel,serif;font-size:14px;color:var(--muted);min-width:0}
+.tab.on{background:var(--panel2);color:var(--gold2);border-bottom-color:var(--panel2)}
+.pane{display:none;flex-direction:column;gap:8px}
+.pane.on{display:flex}
+.bulk{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:14px}
+.bulk button{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:2px 10px;font-size:14px}
+.bulk button.on{border-color:var(--gold);color:var(--gold2)}
+#blds{display:flex;flex-direction:column;gap:8px}
+.item{width:100%;display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:10px;align-items:center;text-align:left;
+  background:linear-gradient(var(--panel2),var(--panel));border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.item:hover:not(:disabled){border-color:var(--gold)}
+.item:disabled{opacity:.45;cursor:not-allowed}
+.item.locked{filter:blur(.3px) grayscale(1);opacity:.35}
+.item .ic{font-size:30px;text-align:center}
+.item .nm{font-family:Cinzel,serif;font-weight:700;font-size:15px}
+.item .ds{font-size:14px;color:var(--muted);line-height:1.25}
+.item .cost{font-variant-numeric:tabular-nums;color:var(--gold2);font-size:14px;margin-top:2px}
+.item .cnt{font-family:Cinzel,serif;font-size:28px;color:var(--dim);font-weight:900;min-width:2ch;text-align:right}
+.ups{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px}
+.up{aspect-ratio:1;background:var(--panel2);border:1px solid var(--line);border-radius:8px;font-size:26px;position:relative}
+.up:hover:not(:disabled){border-color:var(--gold)}
+.up:disabled{opacity:.35;cursor:not-allowed}
+.up.bought{border-color:var(--gold);opacity:1;cursor:default;background:#2e2414}
+.hint{min-height:4.2em;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:15px}
+.hint b{font-family:Cinzel,serif}
+.sec{font-family:Cinzel,serif;color:var(--muted);font-size:13px;margin:6px 0 0;letter-spacing:.1em}
+.stats{display:grid;grid-template-columns:1fr auto;gap:4px 12px;background:var(--panel);border:1px solid var(--line);
+  border-radius:10px;padding:10px 14px;font-size:15px}
+.stats span:nth-child(even){text-align:right;color:var(--gold2);font-variant-numeric:tabular-nums}
+.ach{display:grid;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));gap:6px}
+.ach div{aspect-ratio:1;display:grid;place-items:center;font-size:24px;background:var(--panel);border:1px solid var(--line);
+  border-radius:8px;filter:grayscale(1);opacity:.3}
+.ach div.got{filter:none;opacity:1;border-color:var(--gold)}
+.opts{display:flex;flex-wrap:wrap;gap:8px}
+textarea{width:100%;min-height:80px;background:var(--bg2);color:var(--ink);border:1px solid var(--line);border-radius:8px;
+  padding:8px;font-family:monospace;font-size:12px;user-select:text;-webkit-user-select:text}
+.danger{border-color:var(--blood)!important;color:#ff9b9b}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%) translateY(120px);background:var(--panel2);
+  border:1px solid var(--gold);border-radius:10px;padding:10px 16px;z-index:30;transition:transform .3s;max-width:calc(100% - 32px);
+  text-align:center}
+#toast.show{transform:translateX(-50%) translateY(0)}
+.modal{position:fixed;inset:0;background:#000a;display:none;place-items:center;z-index:40;padding:16px}
+.modal.show{display:grid}
+.modal .box{background:var(--panel2);border:1px solid var(--gold);border-radius:12px;padding:18px;max-width:420px;text-align:center}
+.modal h3{margin:0 0 8px;color:var(--gold2)}
+.modal button{margin-top:12px}
+
+@media (max-width:760px){
+  .app{grid-template-columns:minmax(0,1fr);padding:8px 16px 40px}
+  .left{position:static}
+  header h1{font-size:22px}
+  .purse .amt{font-size:32px}
+  .seal-wrap{width:min(240px,64vw)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>MURDRUM<small>Штраф за безвестный труп. Сотня платит.</small></h1>
+    <div class="hbtns">
+      <span class="buff" id="buff"></span>
+      <button class="ibtn" id="muteBtn" title="Звук">🔔</button>
+    </div>
+  </header>
+
+  <section class="left">
+    <div class="purse">
+      <div class="amt" id="amt">0</div>
+      <div class="lbl">марок серебра</div>
+      <div class="rate" id="rate">0 в секунду</div>
+    </div>
+    <div class="seal-wrap" id="sealWrap">
+      <button id="seal" aria-label="Взыскать штраф">
+        <svg viewBox="0 0 200 200">
+          <defs>
+            <radialGradient id="wax" cx="40%" cy="35%" r="70%">
+              <stop offset="0" stop-color="#d23a2f"/><stop offset=".55" stop-color="#951818"/><stop offset="1" stop-color="#4c0808"/>
+            </radialGradient>
+          </defs>
+          <path d="M100 6c12 0 18 9 29 12s23-1 30 8 3 20 9 30 16 15 15 28-11 17-12 29 6 22-1 32-20 6-29 13-12 20-24 22-19-8-31-8-21 10-32 4-8-19-16-27-21-8-24-20 7-20 6-32-12-19-6-30 19-10 25-20 2-22 12-28 22 0 32-7 13-15 26-15z" fill="url(#wax)"/>
+          <circle cx="100" cy="100" r="64" fill="none" stroke="#3b0606" stroke-width="3" opacity=".7"/>
+          <circle cx="100" cy="100" r="56" fill="none" stroke="#e0705f" stroke-width="1.5" opacity=".35"/>
+          <!-- crossed sword over skull -->
+          <g fill="#3b0606" opacity=".85">
+            <path d="M100 58c-20 0-32 13-32 30 0 10 5 17 11 21v12h42v-12c6-4 11-11 11-21 0-17-12-30-32-30z"/>
+          </g>
+          <g fill="#c3483c">
+            <ellipse cx="87" cy="90" rx="8" ry="9"/><ellipse cx="113" cy="90" rx="8" ry="9"/>
+            <path d="M100 98l-5 10h10z"/>
+            <rect x="86" y="113" width="4" height="8"/><rect x="95" y="113" width="4" height="8"/>
+            <rect x="104" y="113" width="4" height="8"/><rect x="113" y="113" width="2" height="8"/>
+          </g>
+          <g stroke="#3b0606" stroke-width="5" stroke-linecap="round">
+            <path d="M58 150L142 46"/><path d="M142 150L58 46"/>
+          </g>
+          <g stroke="#e0705f" stroke-width="1.5" opacity=".4"><path d="M58 150L142 46"/><path d="M142 150L58 46"/></g>
+          <text x="100" y="160" text-anchor="middle" font-family="Cinzel,serif" font-size="11" font-weight="900" fill="#3b0606" letter-spacing="2">MVRDRVM</text>
+          <ellipse cx="72" cy="54" rx="22" ry="10" fill="#fff" opacity=".08" transform="rotate(-30 72 54)"/>
+        </svg>
+      </button>
+    </div>
+    <div class="clickinfo" id="clickinfo">+1 за удар печатью</div>
+    <div class="chronicle" id="chron">Норманн найден мёртвым у брода. Сотня молчит. Значит, сотня заплатит.</div>
+    <div class="favor">
+      <div>Королевская милость: <b id="favor">0</b> (+<span id="favorPct">0</span>% к доходу)</div>
+      <div style="font-size:14px;color:var(--muted)">Сдать свиток в казну даст: <b id="favorGain">0</b></div>
+      <button id="prestigeBtn" disabled>Сдать свиток королю</button>
+    </div>
+  </section>
+
+  <section class="right">
+    <div class="tabs">
+      <button class="tab on" data-tab="b">Люди</button>
+      <button class="tab" data-tab="u">Указы</button>
+      <button class="tab" data-tab="s">Летопись</button>
+      <button class="tab" data-tab="o">Свиток</button>
+    </div>
+
+    <div class="pane on" id="pane-b">
+      <div class="bulk">Покупать по:
+        <button data-bulk="1" class="on">1</button><button data-bulk="10">10</button><button data-bulk="100">100</button>
+      </div>
+      <div id="blds"></div>
+    </div>
+
+    <div class="pane" id="pane-u">
+      <div class="hint" id="uhint">Наведите на указ, чтобы прочесть его.</div>
+      <div class="sec">ДОСТУПНЫЕ УКАЗЫ</div>
+      <div class="ups" id="ups"></div>
+      <div class="sec">ИЗДАННЫЕ</div>
+      <div class="ups" id="upsDone"></div>
+    </div>
+
+    <div class="pane" id="pane-s">
+      <div class="stats" id="stats"></div>
+      <div class="sec">ДОСТИЖЕНИЯ</div>
+      <div class="hint" id="ahint">Наведите на знак.</div>
+      <div class="ach" id="ach"></div>
+    </div>
+
+    <div class="pane" id="pane-o">
+      <div class="opts">
+        <button class="ibtn" id="saveBtn">Сохранить</button>
+        <button class="ibtn" id="exportBtn">Экспорт</button>
+        <button class="ibtn" id="importBtn">Импорт</button>
+        <button class="ibtn danger" id="resetBtn">Стереть всё</button>
+      </div>
+      <textarea id="saveText" placeholder="Сюда попадёт строка сохранения. Вставьте свою и нажмите «Импорт»."></textarea>
+      <div class="hint">Игра сохраняется сама каждые 15 секунд. Пока вас нет, люди работают вполовину силы (до 8 часов).<br>
+        <i>Murdrum</i> — штраф, который в нормандской Англии платила сотня, если на её земле находили убитого и никто не мог доказать, что он англичанин.</div>
+    </div>
+  </section>
+</div>
+
+<button id="corpse" aria-label="Найден труп">
+  <svg viewBox="0 0 64 64"><path d="M14 40c0-12 8-22 18-22s18 10 18 22v8H14z" fill="#d8c8a8"/><circle cx="25" cy="36" r="4" fill="#2a1a12"/><circle cx="39" cy="36" r="4" fill="#2a1a12"/><path d="M32 40l-3 5h6z" fill="#2a1a12"/><path d="M20 48h24v6H20z" fill="#d8c8a8"/><path d="M24 48v6M28 48v6M32 48v6M36 48v6M40 48v6" stroke="#2a1a12" stroke-width="1.5"/><path d="M10 14l44 0" stroke="#d6a64a" stroke-width="3" stroke-linecap="round"/></svg>
+</button>
+<div id="toast"></div>
+<div class="modal" id="modal"><div class="box"><h3 id="mTitle"></h3><div id="mBody"></div><button class="ibtn" id="mOk">Ясно</button></div></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const SAVE_KEY = 'murdrum.save.v1';
+
+/* ---------- data ---------- */
+const BUILDINGS = [
+  {id:'bailiff', ic:'🧑‍🌾', nm:'Бейлиф', ds:'Обходит деревни и стучит в двери.', base:15, cps:0.1},
+  {id:'reeve',   ic:'🪓', nm:'Староста', ds:'Знает, у кого припрятан мешок ячменя.', base:100, cps:1},
+  {id:'coroner', ic:'⚰️', nm:'Коронер', ds:'Осматривает тела. Каждое тело — штраф.', base:1100, cps:8},
+  {id:'jury',    ic:'⚖️', nm:'Присяжные', ds:'Двенадцать человек, ни один не докажет «английскость».', base:12000, cps:47},
+  {id:'sheriff', ic:'🛡️', nm:'Шериф', ds:'Держит графство в кулаке и в долгах.', base:130000, cps:260},
+  {id:'eyre',    ic:'🐎', nm:'Выездной суд', ds:'Королевские судьи приезжают раз в семь лет — и забирают всё.', base:1.4e6, cps:1400},
+  {id:'abbey',   ic:'⛪', nm:'Аббатство', ds:'Монахи ведут записи. Записи не прощают.', base:2e7, cps:7800},
+  {id:'exchequer', ic:'🧮', nm:'Казначейство', ds:'Шахматная доска, на которой считают серебро всей Англии.', base:3.3e8, cps:44000},
+  {id:'domesday', ic:'📜', nm:'Книга Судного дня', ds:'Каждый акр, каждая свинья, каждый будущий мертвец.', base:5.1e9, cps:260000},
+  {id:'crown',   ic:'👑', nm:'Корона', ds:'Сам король интересуется вашими успехами.', base:7.5e10, cps:1.6e6},
+];
+
+const UPGRADES = [];
+// click upgrades
+const clickUps = [
+  ['🔨','Тяжёлая печать','Удар печатью приносит вдвое больше.',100,()=>true],
+  ['🩸','Сургуч на крови','Удар печатью приносит вдвое больше.',500,s=>s.totalClicks>=100],
+  ['🗡️','Печать в рукояти меча','Удар печатью приносит вдвое больше.',10000,s=>s.totalClicks>=500],
+  ['✋','Рука закона','Удар даёт +1% от дохода в секунду.',50000,s=>s.totalClicks>=1000],
+  ['🖐️','Длинная рука закона','Удар даёт ещё +2% от дохода в секунду.',5e6,s=>s.totalClicks>=3000],
+  ['🔱','Железная рука','Удар даёт ещё +3% от дохода в секунду.',5e8,s=>s.totalClicks>=6000],
+];
+clickUps.forEach((u,i)=>UPGRADES.push({id:'c'+i,ic:u[0],nm:u[1],ds:u[2],cost:u[3],req:u[4],
+  apply:m=>{ if(i<3) m.clickMul*=2; else m.clickCps+=[0.01,0.02,0.03][i-3]; }}));
+// building upgrades
+const tiers=[[1,10],[5,50],[25,500],[50,5000],[100,50000],[150,5e5]];
+const tierNames=['Новые сапоги','Списки должников','Клеймо','Присяга','Королевская грамота','Вечное право'];
+BUILDINGS.forEach((b,bi)=>{
+  tiers.forEach(([need,mult],ti)=>{
+    UPGRADES.push({id:`b${bi}_${ti}`, ic:b.ic, nm:`${tierNames[ti]}: ${b.nm}`,
+      ds:`${b.nm} работает вдвое эффективнее. (нужно ${need} шт.)`,
+      cost:b.base*mult, req:s=>s.b[b.id]>=need, apply:m=>{m.bMul[b.id]*=2;}});
+  });
+});
+// global
+const globalUps=[
+  ['🕯️','Ночные дозоры','Весь доход +10%.',1e4,s=>s.totalEarned>=5e3,1.1],
+  ['🔔','Колокол хандреда','Весь доход +15%.',1e6,s=>s.totalEarned>=5e5,1.15],
+  ['🐺','Закон о волчьей голове','Весь доход +20%.',1e8,s=>s.totalEarned>=5e7,1.2],
+  ['🏰','Норманнский замок','Весь доход +25%.',1e10,s=>s.totalEarned>=5e9,1.25],
+  ['☠️','Презумпция норманна','Весь доход +50%.',1e12,s=>s.totalEarned>=5e11,1.5],
+];
+globalUps.forEach((u,i)=>UPGRADES.push({id:'g'+i,ic:u[0],nm:u[1],ds:u[2],cost:u[3],req:u[4],apply:m=>{m.global*=u[5];}}));
+// corpse upgrades
+UPGRADES.push({id:'k0',ic:'🦴',nm:'Нюх коронера','ds':'Трупы находятся вдвое чаще.',cost:7777,req:s=>s.corpses>=3,apply:m=>{m.corpseFreq*=2;}});
+UPGRADES.push({id:'k1',ic:'⏳',nm:'Медленное разложение','ds':'Эффект трупа длится вдвое дольше.',cost:777777,req:s=>s.corpses>=10,apply:m=>{m.corpseDur*=2;}});
+const UPMAP = Object.fromEntries(UPGRADES.map(u=>[u.id,u]));
+
+const ACH = [
+  ['👆','Первый удар','Ударьте печатью.',s=>s.totalClicks>=1],
+  ['✊','Тяжёлая рука','1 000 ударов печатью.',s=>s.totalClicks>=1000],
+  ['🥊','Неумолимый','10 000 ударов печатью.',s=>s.totalClicks>=10000],
+  ['🪙','Горсть серебра','Собрать 1 000 марок за всё время.',s=>s.totalEarned>=1e3],
+  ['💰','Мешок серебра','Собрать 1 млн марок.',s=>s.totalEarned>=1e6],
+  ['🏦','Сундуки казны','Собрать 1 млрд марок.',s=>s.totalEarned>=1e9],
+  ['🌕','Серебряная луна','Собрать 1 трлн марок.',s=>s.totalEarned>=1e12],
+  ['⚙️','Машина взыскания','10 марок в секунду.',s=>G.cps>=10],
+  ['🏭','Фискальная машина','1 000 марок в секунду.',s=>G.cps>=1000],
+  ['🌋','Неостановимое','1 млн марок в секунду.',s=>G.cps>=1e6],
+  ['💀','Первый труп','Найдите тело.',s=>s.corpses>=1],
+  ['⚰️','Кладбище','Найдите 25 тел.',s=>s.corpses>=25],
+  ['👥','Своя свита','100 людей на службе.',s=>totalB(s)>=100],
+  ['🏛️','Аппарат','500 людей на службе.',s=>totalB(s)>=500],
+  ['📜','Указ за указом','Издайте 20 указов.',s=>s.ups.length>=20],
+  ['👑','Милость короля','Сдайте свиток королю.',s=>s.prestiges>=1],
+  ['🌟','Любимец двора','Получите 100 милости.',s=>s.favor>=100],
+];
+
+const CHRON = [
+  'У мельницы нашли тело. Никто не знает его имени. Сотня платит.',
+  'Вдова клянётся, что покойник был сакс. Свидетелей нет. Сотня платит.',
+  'Присяжные совещались до вечера. Решили: платить.',
+  'В лесу нашли кости. Чьи — неизвестно. Сотня платит всё равно.',
+  'Староста пытался спрятать тело в болоте. Болото вернуло тело.',
+  'Шериф пересчитал серебро дважды. Не хватает. Пересчитал деревню.',
+  'Коронер пришёл через неделю. Штраф — за неделю тоже.',
+  'Монах записал: «Умер от удивления при виде счёта».',
+  'Сотня Эйнсфорд продала колокол, чтобы заплатить.',
+  'Казначей кладёт фишки на клетчатое сукно. Клетка — деревня, фишка — серебро.',
+  'Вилланы говорят, что лучше не находить мертвецов. Вилланы правы.',
+  'Король доволен. Это хуже, чем если бы он был недоволен.',
+];
+
+/* ---------- state ---------- */
+const fresh = () => ({
+  silver:0, totalEarned:0, runEarned:0, totalClicks:0, clickEarned:0, corpses:0,
+  favor:0, prestiges:0, b:Object.fromEntries(BUILDINGS.map(b=>[b.id,0])), ups:[], ach:[],
+  start:Date.now(), last:Date.now(), muted:false, favorEarned:0,
+});
+let S = fresh();
+const G = {cps:0, perClick:1, buffMul:1, buffClick:1, buffUntil:0, buffName:'', bulk:1, mods:null};
+
+function totalB(s){ return Object.values(s.b).reduce((a,c)=>a+c,0); }
+
+function mods(){
+  const m = {clickMul:1, clickCps:0, global:1, corpseFreq:1, corpseDur:1, bMul:Object.fromEntries(BUILDINGS.map(b=>[b.id,1]))};
+  S.ups.forEach(id=>UPMAP[id] && UPMAP[id].apply(m));
+  return m;
+}
+function recalc(){
+  const m = G.mods = mods();
+  const favorMul = 1 + S.favor*0.02;
+  const achMul = 1 + S.ach.length*0.01;
+  let base = 0;
+  BUILDINGS.forEach(b=>{ base += b.cps * S.b[b.id] * m.bMul[b.id]; });
+  const buff = Date.now()<G.buffUntil ? G.buffMul : 1;
+  G.cps = base * m.global * favorMul * achMul * buff;
+  const clickBuff = Date.now()<G.buffUntil ? G.buffClick : 1;
+  G.perClick = (1*m.clickMul*favorMul*achMul + G.cps/ (buff||1) * m.clickCps) * clickBuff;
+}
+function costOf(b, n=1){
+  const owned = S.b[b.id];
+  // geometric sum
+  const r = 1.15;
+  return b.base * Math.pow(r,owned) * (Math.pow(r,n)-1)/(r-1);
+}
+
+/* ---------- format ---------- */
+const SUF = ['', ' тыс', ' млн', ' млрд', ' трлн', ' квдрлн', ' квнтлн', ' секстлн', ' септлн', ' октлн', ' нонлн', ' децлн'];
+function fmt(n, dec){
+  if(!isFinite(n)) return '∞';
+  if(n < 1000){
+    if(dec && n<100 && n%1) return n.toFixed(1).replace('.',',');
+    return Math.floor(n).toString();
+  }
+  const e = Math.floor(Math.log10(n)/3);
+  if(e >= SUF.length) return n.toExponential(2).replace('.',',');
+  const v = n/Math.pow(1000,e);
+  return (v<10? v.toFixed(2) : v<100? v.toFixed(1) : Math.floor(v).toString()).replace('.',',') + SUF[e];
+}
+function fmtTime(sec){
+  sec=Math.floor(sec); const h=Math.floor(sec/3600), m=Math.floor(sec%3600/60), s=sec%60;
+  return h? `${h} ч ${m} мин` : m? `${m} мин ${s} с` : `${s} с`;
+}
+
+/* ---------- sound ---------- */
+let AC=null;
+function snd(freq=180, dur=0.08, type='triangle', vol=0.08){
+  if(S.muted) return;
+  try{
+    AC = AC || new (window.AudioContext||window.webkitAudioContext)();
+    const o=AC.createOscillator(), g=AC.createGain();
+    o.type=type; o.frequency.setValueAtTime(freq,AC.currentTime);
+    o.frequency.exponentialRampToValueAtTime(freq*0.5,AC.currentTime+dur);
+    g.gain.setValueAtTime(vol,AC.currentTime); g.gain.exponentialRampToValueAtTime(0.0001,AC.currentTime+dur);
+    o.connect(g).connect(AC.destination); o.start(); o.stop(AC.currentTime+dur);
+  }catch(e){}
+}
+
+/* ---------- earn ---------- */
+function earn(x){ S.silver+=x; S.totalEarned+=x; S.runEarned+=x; }
+
+/* ---------- click ---------- */
+const seal=$('#seal'), wrap=$('#sealWrap');
+function doClick(ev){
+  recalc();
+  const v = G.perClick;
+  earn(v); S.totalClicks++; S.clickEarned+=v;
+  const r = wrap.getBoundingClientRect();
+  let x = (ev && ev.clientX!=null && ev.clientX!==0) ? ev.clientX - r.left : r.width/2;
+  let y = (ev && ev.clientY!=null && ev.clientY!==0) ? ev.clientY - r.top : r.height/2;
+  const f=document.createElement('div'); f.className='float'; f.textContent='+'+fmt(v,true);
+  f.style.left=(x-20)+'px'; f.style.top=(y-30)+'px'; wrap.appendChild(f);
+  setTimeout(()=>f.remove(),1000);
+  for(let i=0;i<3;i++){
+    const d=document.createElement('div'); d.className='drop';
+    d.style.left=x+'px'; d.style.top=y+'px';
+    d.style.setProperty('--dx',(Math.random()*80-40)+'px'); d.style.setProperty('--dy',(40+Math.random()*60)+'px');
+    wrap.appendChild(d); setTimeout(()=>d.remove(),800);
+  }
+  seal.classList.add('hit'); setTimeout(()=>seal.classList.remove('hit'),60);
+  snd(140+Math.random()*40,0.07,'triangle',0.07);
+  render();
+}
+seal.addEventListener('click', doClick);
+document.addEventListener('keydown', e=>{ if(e.code==='Space' && !e.repeat && document.activeElement.tagName!=='TEXTAREA'){ e.preventDefault(); doClick(); } });
+
+/* ---------- buildings UI ---------- */
+const bEls={};
+function buildBuildings(){
+  const host=$('#blds'); host.innerHTML='';
+  BUILDINGS.forEach((b,i)=>{
+    const el=document.createElement('button'); el.className='item';
+    el.innerHTML=`<div class="ic">${b.ic}</div><div><div class="nm"></div><div class="ds"></div><div class="cost"></div></div><div class="cnt"></div>`;
+    el.addEventListener('click',()=>buyB(b));
+    host.appendChild(el); bEls[b.id]=el;
+  });
+}
+function buyB(b){
+  const n=G.bulk, c=costOf(b,n);
+  if(S.silver<c) return;
+  S.silver-=c; S.b[b.id]+=n; snd(320,0.12,'square',0.04);
+  recalc(); renderAll();
+}
+document.querySelectorAll('[data-bulk]').forEach(btn=>btn.addEventListener('click',()=>{
+  G.bulk=+btn.dataset.bulk;
+  document.querySelectorAll('[data-bulk]').forEach(x=>x.classList.toggle('on',x===btn)); render();
+}));
+
+/* ---------- upgrades UI ---------- */
+let upSig='';
+function availableUps(){
+  return UPGRADES.filter(u=>!S.ups.includes(u.id) && u.req(S)).sort((a,b)=>a.cost-b.cost);
+}
+function renderUps(force){
+  const av=availableUps();
+  const sig=av.map(u=>u.id).join()+'|'+S.ups.length;
+  if(sig!==upSig || force){
+    upSig=sig;
+    const host=$('#ups'); host.innerHTML='';
+    if(!av.length) host.innerHTML='<div style="grid-column:1/-1;color:var(--dim);font-style:italic">Новых указов пока нет.</div>';
+    av.forEach(u=>{
+      const b=document.createElement('button'); b.className='up'; b.textContent=u.ic; b.dataset.id=u.id;
+      const show=()=>{$('#uhint').innerHTML=`<b>${u.nm}</b> — <span style="color:var(--gold2)">${fmt(u.cost)}</span><br>${u.ds}`;};
+      b.addEventListener('mouseenter',show); b.addEventListener('focus',show);
+      b.addEventListener('click',()=>{ show(); if(S.silver>=u.cost){ S.silver-=u.cost; S.ups.push(u.id); snd(520,0.2,'sine',0.06); toast(`Указ издан: ${u.nm}`); recalc(); renderAll(); }});
+      host.appendChild(b);
+    });
+    const done=$('#upsDone'); done.innerHTML='';
+    S.ups.forEach(id=>{ const u=UPMAP[id]; if(!u) return;
+      const b=document.createElement('button'); b.className='up bought'; b.textContent=u.ic;
+      const show=()=>{$('#uhint').innerHTML=`<b>${u.nm}</b> <span style="color:var(--ok)">(издан)</span><br>${u.ds}`;};
+      b.addEventListener('mouseenter',show); b.addEventListener('click',show); done.appendChild(b);
+    });
+  }
+  $('#ups').querySelectorAll('.up').forEach(b=>{ b.disabled = S.silver < UPMAP[b.dataset.id].cost; });
+  const cnt = av.filter(u=>S.silver>=u.cost).length;
+  document.querySelector('[data-tab="u"]').textContent = cnt? `Указы (${cnt})` : 'Указы';
+}
+
+/* ---------- achievements ---------- */
+function checkAch(){
+  ACH.forEach((a,i)=>{ if(!S.ach.includes(i) && a[3](S)){ S.ach.push(i); toast(`${a[0]} Достижение: ${a[1]}`); recalc(); renderAch(); }});
+}
+function renderAch(){
+  const host=$('#ach'); host.innerHTML='';
+  ACH.forEach((a,i)=>{ const d=document.createElement('div'); d.textContent=a[0]; if(S.ach.includes(i)) d.className='got';
+    const show=()=>{$('#ahint').innerHTML=`<b>${a[1]}</b>${S.ach.includes(i)?' <span style="color:var(--ok)">✓</span>':''}<br>${a[2]}<br><small style="color:var(--muted)">Каждое достижение: +1% к доходу</small>`;};
+    d.addEventListener('mouseenter',show); d.addEventListener('click',show); host.appendChild(d); });
+}
+
+/* ---------- prestige ---------- */
+function favorFor(earned){ return Math.floor(Math.cbrt(earned/1e9)); }
+$('#prestigeBtn').addEventListener('click',()=>{
+  const g=favorGain(); if(g<1) return;
+  if(!confirm(`Сдать свиток королю? Вы потеряете серебро, людей и указы, но получите ${g} милости (+${g*2}% к доходу навсегда).`)) return;
+  const keep={favor:S.favor+g, prestiges:S.prestiges+1, totalEarned:S.totalEarned, totalClicks:S.totalClicks,
+    clickEarned:S.clickEarned, corpses:S.corpses, ach:S.ach, start:S.start, muted:S.muted, favorEarned:(S.favorEarned||0)+S.runEarned};
+  S=Object.assign(fresh(),keep); G.buffUntil=0;
+  recalc(); upSig=''; renderAll(); save();
+  modal('Король милостив',`Ваш свиток принят. Милость: <b>${S.favor}</b>.<br>Всё начинается заново — но серебро теперь течёт быстрее.`);
+});
+function favorGain(){
+  // favor total is based on all silver ever earned across runs that have been turned in + current run
+  const total=(S.favorEarned||0)+S.runEarned;
+  return Math.max(0, favorFor(total) - S.favor);
+}
+
+/* ---------- corpse event ---------- */
+const corpse=$('#corpse'); let corpseTimer=0, corpseHide=0;
+function scheduleCorpse(){
+  const m=G.mods||mods();
+  const wait=(60+Math.random()*120)/m.corpseFreq*1000;
+  corpseTimer=setTimeout(showCorpse, wait);
+}
+function showCorpse(){
+  const W=window.innerWidth, H=window.innerHeight;
+  corpse.style.left=(16+Math.random()*(W-96))+'px'; corpse.style.top=(80+Math.random()*(H-180))+'px';
+  corpse.style.display='block';
+  corpseHide=setTimeout(()=>{corpse.style.display='none'; scheduleCorpse();}, 13000);
+}
+corpse.addEventListener('click',()=>{
+  clearTimeout(corpseHide); corpse.style.display='none'; S.corpses++;
+  const m=G.mods||mods(); const roll=Math.random(); let msg;
+  recalc();
+  if(roll<0.45){
+    const gain=Math.max(13, Math.min(S.silver*0.15, G.cps*900)+13);
+    earn(gain); msg=`Найден труп! Сотня платит ${fmt(gain)} марок.`;
+  } else if(roll<0.85){
+    G.buffMul=7; G.buffClick=1; G.buffUntil=Date.now()+77000*m.corpseDur; G.buffName='Мор: доход ×7';
+    msg='Мор! Трупов так много, что доход ×7 на 77 секунд.';
+  } else {
+    G.buffMul=1; G.buffClick=777; G.buffUntil=Date.now()+13000*m.corpseDur; G.buffName='Кровавая печать: удар ×777';
+    msg='Кровавая печать! Удары печатью ×777 на 13 секунд.';
+  }
+  snd(90,0.4,'sawtooth',0.06); toast('💀 '+msg); recalc(); renderAll(); scheduleCorpse();
+});
+
+/* ---------- UI helpers ---------- */
+let toastT=0;
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),3200); }
+function modal(title, body){ $('#mTitle').textContent=title; $('#mBody').innerHTML=body; $('#modal').classList.add('show'); }
+$('#mOk').addEventListener('click',()=>$('#modal').classList.remove('show'));
+
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.id==='pane-'+t.dataset.tab));
+  if(t.dataset.tab==='s'){ renderStats(); renderAch(); }
+}));
+$('#muteBtn').addEventListener('click',()=>{ S.muted=!S.muted; $('#muteBtn').textContent=S.muted?'🔕':'🔔'; });
+
+function renderStats(){
+  const rows=[
+    ['Серебра сейчас',fmt(S.silver)],['Собрано в этом свитке',fmt(S.runEarned)],['Собрано за всё время',fmt(S.totalEarned)],
+    ['Доход в секунду',fmt(G.cps,true)],['За удар печатью',fmt(G.perClick,true)],['Ударов печатью',fmt(S.totalClicks)],
+    ['Собрано ударами',fmt(S.clickEarned)],['Людей на службе',fmt(totalB(S))],['Издано указов',`${S.ups.length} / ${UPGRADES.length}`],
+    ['Найдено трупов',fmt(S.corpses)],['Сдано свитков',fmt(S.prestiges)],['Милость',`${S.favor} (+${S.favor*2}%)`],
+    ['Достижения',`${S.ach.length} / ${ACH.length} (+${S.ach.length}%)`],['В игре',fmtTime((Date.now()-S.start)/1000)],
+  ];
+  $('#stats').innerHTML=rows.map(r=>`<span>${r[0]}</span><span>${r[1]}</span>`).join('');
+}
+
+function render(){
+  $('#amt').textContent=fmt(S.silver);
+  $('#rate').textContent=fmt(G.cps,true)+' в секунду';
+  $('#clickinfo').textContent='+'+fmt(G.perClick,true)+' за удар печатью · пробел тоже бьёт';
+  document.title = fmt(S.silver)+' марок · Murdrum';
+  // buildings
+  let revealed=0;
+  BUILDINGS.forEach((b,i)=>{
+    const el=bEls[b.id], c=costOf(b,G.bulk);
+    const visible = i===0 || S.b[BUILDINGS[i-1].id]>0 || S.b[b.id]>0 || S.totalEarned>=b.base*0.6;
+    const locked = !visible;
+    el.classList.toggle('locked', locked);
+    el.querySelector('.nm').textContent = locked? '???' : b.nm;
+    const each = b.cps*(G.mods?G.mods.bMul[b.id]:1);
+    el.querySelector('.ds').textContent = locked? 'Ещё не на службе.' : `${b.ds} (${fmt(each,true)}/с каждый)`;
+    el.querySelector('.cost').textContent = (G.bulk>1?`×${G.bulk}: `:'')+fmt(c)+' марок';
+    el.querySelector('.cnt').textContent = S.b[b.id]||'';
+    el.disabled = S.silver<c;
+    el.style.display = (locked && revealed++>=1) ? 'none' : '';
+  });
+  renderUps();
+  // favor
+  const g=favorGain();
+  $('#favor').textContent=S.favor; $('#favorPct').textContent=S.favor*2; $('#favorGain').textContent=g;
+  const pb=$('#prestigeBtn'); pb.disabled=g<1;
+  pb.textContent = g<1 ? `Нужно больше серебра (≥ ${fmt(Math.pow(S.favor+1,3)*1e9 - (S.favorEarned||0))})` : `Сдать свиток королю (+${g})`;
+  // buff
+  const bf=$('#buff');
+  if(Date.now()<G.buffUntil){ bf.style.display='inline-block'; bf.textContent=`${G.buffName} · ${Math.ceil((G.buffUntil-Date.now())/1000)}с`; }
+  else bf.style.display='none';
+}
+function renderAll(){ render(); if($('#pane-s').classList.contains('on')) renderStats(); }
+
+/* ---------- save ---------- */
+function serialize(){ const o={...S}; o.last=Date.now(); return JSON.stringify(o); }
+function save(silent=true){
+  try{ localStorage.setItem(SAVE_KEY, serialize()); if(!silent) toast('Сохранено.'); }
+  catch(e){ if(!silent) toast('Не удалось сохранить в этом браузере. Используйте экспорт.'); }
+}
+function loadObj(o){
+  const f=fresh();
+  S=Object.assign(f,o); S.b=Object.assign(f.b,o.b||{});
+  S.ups=(S.ups||[]).filter(id=>UPMAP[id]); S.ach=(S.ach||[]).filter(i=>i<ACH.length);
+}
+function load(){
+  let raw=null; try{ raw=localStorage.getItem(SAVE_KEY); }catch(e){}
+  if(!raw) return;
+  try{
+    loadObj(JSON.parse(raw)); recalc();
+    const away=Math.min((Date.now()-(S.last||Date.now()))/1000, 8*3600);
+    if(away>30 && G.cps>0){
+      const gain=G.cps*away*0.5; earn(gain);
+      setTimeout(()=>modal('Пока вас не было',`Прошло ${fmtTime(away)}. Ваши люди собрали <b style="color:var(--gold2)">${fmt(gain)}</b> марок.`),300);
+    }
+  }catch(e){ console.warn('bad save',e); }
+}
+$('#saveBtn').addEventListener('click',()=>save(false));
+$('#exportBtn').addEventListener('click',()=>{
+  const t=$('#saveText'); t.value=btoa(unescape(encodeURIComponent(serialize()))); t.select();
+  try{ navigator.clipboard.writeText(t.value).then(()=>toast('Строка скопирована.'),()=>toast('Строка готова — скопируйте её.')); }catch(e){ toast('Строка готова — скопируйте её.'); }
+});
+$('#importBtn').addEventListener('click',()=>{
+  try{ const o=JSON.parse(decodeURIComponent(escape(atob($('#saveText').value.trim()))));
+    if(typeof o!=='object'||o===null||!('silver' in o)) throw 0;
+    loadObj(o); recalc(); upSig=''; renderAll(); renderAch(); save(); toast('Свиток загружен.');
+  }catch(e){ toast('Строка не похожа на сохранение Murdrum.'); }
+});
+$('#resetBtn').addEventListener('click',()=>{
+  if(!confirm('Стереть всё, включая милость и достижения? Это нельзя отменить.')) return;
+  S=fresh(); G.buffUntil=0; try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  recalc(); upSig=''; renderAll(); renderAch(); toast('Летопись стёрта.');
+});
+window.addEventListener('beforeunload',()=>save());
+document.addEventListener('visibilitychange',()=>{ if(document.hidden) save(); });
+
+/* ---------- loop ---------- */
+let lastT=performance.now(), acc=0, chronI=0;
+function frame(t){
+  const dt=Math.min((t-lastT)/1000, 1); lastT=t;
+  if(G.cps>0) earn(G.cps*dt);
+  acc+=dt;
+  if(acc>=0.1){ acc=0; recalc(); render(); }
+  requestAnimationFrame(frame);
+}
+// background tabs: rAF pauses, so catch up with an interval
+let lastWall=Date.now();
+setInterval(()=>{
+  const now=Date.now(), gap=(now-lastWall)/1000; lastWall=now;
+  if(document.hidden && G.cps>0) earn(G.cps*gap);
+  checkAch();
+},1000);
+setInterval(()=>save(),15000);
+setInterval(()=>{ const c=$('#chron'); c.style.opacity=0; setTimeout(()=>{ c.textContent=CHRON[chronI++%CHRON.length]; c.style.opacity=1; },300); },14000);
+$('#chron').style.transition='opacity .3s';
+
+/* ---------- boot ---------- */
+buildBuildings();
+load();
+$('#muteBtn').textContent=S.muted?'🔕':'🔔';
+recalc(); renderAll(); renderAch();
+scheduleCorpse();
+requestAnimationFrame(frame);
+// test hook
+window.__murdrum={get S(){return S;},G,showCorpse,recalc,render};
+})();
+</script>
+</body>
+</html>
