@@ -1,31 +1,89 @@
 {
   "_comment": "Раскладка интерфейса MU 1.04d в виртуальных координатах 640x480. Экранная точка = левый_верх_клиента + v * (ширина_клиента / 640). Проверено на скриншоте окна 1000x750 (клиент с (41,59)).",
-  "virtual_size": [640, 480],
+  "virtual_size": [
+    640,
+    480
+  ],
   "inventory": {
     "verified": true,
-    "grid_origin": [465, 200],
+    "grid_origin": [
+      465,
+      200
+    ],
     "cell": 20,
     "cols": 8,
     "rows": 8,
-    "title_box": [518, 10, 576, 23],
-    "zen_box": [515, 372, 610, 386]
+    "title_box": [
+      518,
+      10,
+      576,
+      23
+    ],
+    "zen_box": [
+      515,
+      372,
+      610,
+      386
+    ]
   },
   "vault": {
-    "verified": false,
-    "_note": "Открывается вместе с инвентарём, окно слева от него (640-190*2=260). Сетка 8x15. Начало сетки по Y не проверено — нужен скриншот сундука файлом.",
-    "grid_origin": [275, 52],
+    "verified": true,
+    "_note": "Открывается вместе с инвентарём, слева от него. Проверено наложением на скриншот сундука.",
+    "grid_origin": [
+      275,
+      52
+    ],
     "cell": 20,
     "cols": 8,
-    "rows": 15
+    "rows": 15,
+    "zen_box": [
+      318,
+      364,
+      405,
+      380
+    ]
   },
   "coords": {
     "verified": true,
-    "_note": "Координаты персонажа слева внизу, светлые цифры на чёрном. Образцы цифр в templates/digits/ (есть 1,4,5,6; остальные дособрать).",
-    "box": [9, 461, 60, 475]
+    "_note": "Координаты персонажа слева внизу, светлые цифры на чёрном. Образцы: templates/digits/ (есть 1,4,5,6,7; нужны 0,2,3,8,9). Рамка занимает ~4 px по краям области — их пропускать.",
+    "box": [
+      9,
+      461,
+      60,
+      475
+    ]
   },
   "hp_orb": {
     "verified": true,
-    "box": [96, 433, 151, 478],
+    "box": [
+      96,
+      433,
+      151,
+      478
+    ],
     "_note": "Красная сфера HP. Мёртв/пусто = сфера тёмная. Образец полной сферы: templates/hp_orb_full.png"
-  }
+  },
+  "login": {
+    "verified": true,
+    "_note": "Окно логина после выбора подсервера. Account уже заполнен лаунчером.",
+    "account_field_center": [
+      337,
+      283
+    ],
+    "password_field_center": [
+      337,
+      303
+    ],
+    "ok_center": [
+      330,
+      343
+    ]
+  },
+  "flow": [
+    "launcher: templates/launcher_connect.png",
+    "server: templates/server_murdrum.png -> подсервер Murdrum-N Connect (образца ещё нет)",
+    "login: клик password_field_center, ввод пароля, templates/login_ok.png",
+    "character: templates/char_<ИМЯ>.png -> templates/charsel_connect.png",
+    "in game: templates/hp_orb_full.png, координаты из coords"
+  ]
 }
